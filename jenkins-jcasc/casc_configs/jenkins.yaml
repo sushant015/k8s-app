@@ -30,3 +30,5 @@ unclassified:
 
 jobs:
   - file: "/usr/share/jenkins/ref/jobs/seed.groovy"
+  - file: "/usr/share/jenkins/ref/jobs/seed-mode-1.groovy"
+  - file: "/usr/share/jenkins/ref/jobs/seed-mode-2.groovy"
