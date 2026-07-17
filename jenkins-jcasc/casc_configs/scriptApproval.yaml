@@ -1,0 +1,7 @@
+security:
+  scriptApproval:
+    approvedSignatures:
+      - "method java.io.File eachFile groovy.lang.Closure"
+      - "method java.io.File eachFileRecurse groovy.lang.Closure"
+      - "new java.io.File java.lang.String"
+      - "method groovy.lang.Script evaluate java.io.File"

@@ -29,6 +29,37 @@ unclassified:
     adminAddress: "admin@example.com"
 
 jobs:
-  - file: "/usr/share/jenkins/ref/jobs/seed.groovy"
-  - file: "/usr/share/jenkins/ref/jobs/seed-mode-1.groovy"
-  - file: "/usr/share/jenkins/ref/jobs/seed-mode-2.groovy"
+  - script: >
+      folder('Automated Jobs') {
+          displayName('Automated Jobs')
+          description('Folder containing Jenkins automation jobs')
+      }
+
+      pipelineJob('Automated Jobs/Seed Job') {
+        description('Synchronizes Jenkins jobs from the jenkins-seed-jobs repository')
+        logRotator {
+            daysToKeep(30)
+            numToKeep(20)
+        }
+
+        definition {
+            cpsScm {
+                scm {
+                    git {
+                        remote {
+                            url('https://github.com/sushant015/jenkins-automated-jobs.git')
+                        }
+                        branch('*/main')
+                    }
+                }
+                scriptPath('Jenkinsfile')
+                lightweight(true)
+            }
+        }
+
+        triggers {
+            githubPush()
+            // Uncomment if webhook is unavailable
+            scm('H/5 * * * *')
+        }
+      }
