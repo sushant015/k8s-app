@@ -1,0 +1,2 @@
+# Duplicate globalJobDslSecurityConfiguration removed.
+# Configuration moved to casc_configs/jenkins.yaml to avoid merge conflicts.
