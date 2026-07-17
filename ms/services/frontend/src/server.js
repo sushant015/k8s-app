@@ -9,12 +9,14 @@ const app = express();
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.originalUrl}`);
+  console.log('api-gateway:', API_GATEWAY_URL);
   next();
 });
 
 app.use('/api', createProxyMiddleware({
   target: API_GATEWAY_URL,
   changeOrigin: true,
+  pathRewrite: (path, req) => req.originalUrl,
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));

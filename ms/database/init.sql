@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS results.option_totals (
 
 -- Seed default admin (password: password — change in production)
 INSERT INTO auth.admins (email, password_hash, role)
-VALUES ('admin@votepoll.local', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'ADMIN')
+VALUES ('admin@votepoll.local', '$2a$10$3wt8vmIwOXE/6GokZsvATeIPEKlgpRdykA7rPKrmMVRCg2AUfK0K.', 'ADMIN')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO users.profiles (id, email, display_name)

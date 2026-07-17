@@ -182,3 +182,51 @@ ms/
 ├── k8s/                    # Kubernetes manifests
 └── services/               # Microservice source code
 ```
+## Troubleshooting 
+
+1. Check direct authentication from Auth Service
+
+```
+docker exec vote-poll-auth-service-1 wget -S -O - --post-data='{"email":"admin@votepoll.local", "password":"Sushant@12"}' --header='Content-Type: application/json' http://localhost:8080/api/auth/login
+
+## Command to down running docker with volumes and starts again
+docker-compose down -v   
+./scripts/local-dev.sh up
+
+```
+2. Check authentication from api-gateway endpoint
+- Verify the logs for url mapping (api/auth/login on api-getway should map api/auth/login on auth service)
+
+```
+curl -X POST http://localhost:8081/api/auth/login -H "Content-Type: application/json" -d '{"email":"admin@votepoll.local", "password":"Sushant@12"}' -v
+
+docker image rm vote-poll-frontend:latest
+docker image rm vote-poll-api-gateway:latest
+docker image ls
+```
+
+3. Is the API Gateway actually listening on 8081 inside Docker?
+If your API Gateway container is configured like this:
+
+```
+api-gateway:
+  ports:
+    - "8081:8080"
+```
+
+then:
+
+Outside Docker (your Mac): use http://localhost:8081
+Inside Docker (another container): use http://api-gateway:8080
+Containers communicate over the container's internal port, not the host-mapped port.
+
+```
+docker exec -it vote-poll-frontend-1 sh
+
+## If that succeeds, your internal networking is correct.
+wget -S -O - http://api-gateway:8080/health
+
+## This should usually fail unless the gateway is actually listening on 8081 inside the container.
+wget -S -O - http://api-gateway:8081/health
+
+```

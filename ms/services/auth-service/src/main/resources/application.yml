@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: auth-service
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/votepoll}
     username: ${DB_USER:votepoll}

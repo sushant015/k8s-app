@@ -121,6 +121,8 @@ services:
         condition: service_healthy
       result-service:
         condition: service_healthy
+    ports:
+      - "8081:8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 10s

@@ -14,52 +14,128 @@ const services = {
 };
 
 const app = express();
+
+// -----------------------------------------------------------------------------
+// Middleware
+// -----------------------------------------------------------------------------
+
 app.use(helmet());
+
+// Only required if the gateway needs to inspect request bodies.
+// Since we're using it, we'll forward the body manually.
 app.use(express.json());
 
+// Request Logger
 app.use((req, res, next) => {
-  console.log(`api-gateway: ${req.method} ${req.originalUrl}`);
+  console.log(`\n==================================================`);
+  console.log(`[Gateway] ${req.method} ${req.originalUrl}`);
+  console.log(`==================================================`);
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'UP', service: 'api-gateway' }));
+// -----------------------------------------------------------------------------
+// Rate Limiter
+// -----------------------------------------------------------------------------
 
 const voteLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  message: { error: 'Too many requests, please try again later' },
+  message: {
+    error: 'Too many requests, please try again later.',
+  },
 });
 
-app.use('/api/auth', createProxyMiddleware({
-  target: services.auth,
-  changeOrigin: true,
-  pathRewrite: { '^/api/auth': '/api/auth' },
-}));
+// -----------------------------------------------------------------------------
+// Proxy Factory
+// -----------------------------------------------------------------------------
 
-app.use('/api/users', createProxyMiddleware({
-  target: services.users,
-  changeOrigin: true,
-  pathRewrite: { '^/api/users': '/api/users' },
-}));
+function createServiceProxy(target) {
+  return createProxyMiddleware({
+    target,
+    changeOrigin: true,
 
-app.use('/api/polls', createProxyMiddleware({
-  target: services.polls,
-  changeOrigin: true,
-  pathRewrite: (path) => path.replace(/^\/api\/polls/, '/api/polls'),
-}));
+    // Preserve original URL
+    pathRewrite: (path, req) => req.originalUrl,
 
-app.use('/api/votes', voteLimiter, createProxyMiddleware({
-  target: services.votes,
-  changeOrigin: true,
-  pathRewrite: { '^/api/votes': '/api/votes' },
-}));
+    on: {
+      proxyReq: (proxyReq, req) => {
+        console.log(`[Proxy] ${req.method} ${req.originalUrl}`);
+        console.log(`Target : ${target}`);
+        console.log(`Forward: ${proxyReq.path}`);
 
-app.use('/api/results', createProxyMiddleware({
-  target: services.results,
-  changeOrigin: true,
-  pathRewrite: { '^/api/results': '/api/results' },
-}));
+        // Re-send JSON body because express.json() already consumed it
+        if (
+          req.body &&
+          Object.keys(req.body).length > 0 &&
+          ['POST', 'PUT', 'PATCH'].includes(req.method)
+        ) {
+          const bodyData = JSON.stringify(req.body);
+
+          proxyReq.setHeader('Content-Type', 'application/json');
+          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+
+          proxyReq.write(bodyData);
+
+          console.log('Body forwarded:', bodyData);
+        }
+      },
+
+      proxyRes: (proxyRes, req) => {
+        console.log(
+          `[Response] ${req.method} ${req.originalUrl} -> ${proxyRes.statusCode}`
+        );
+      },
+
+      error: (err, req, res) => {
+        console.error(
+          `[Proxy Error] ${req.method} ${req.originalUrl}`
+        );
+        console.error(err);
+
+        if (!res.headersSent) {
+          res.status(502).json({
+            error: 'Bad Gateway',
+            message: err.message,
+          });
+        }
+      },
+    },
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Health Check
+// -----------------------------------------------------------------------------
+
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'UP',
+    service: 'api-gateway',
+  });
+});
+
+// -----------------------------------------------------------------------------
+// API Routes
+// -----------------------------------------------------------------------------
+
+app.use('/api/auth', createServiceProxy(services.auth));
+
+app.use('/api/users', createServiceProxy(services.users));
+
+app.use('/api/polls', createServiceProxy(services.polls));
+
+app.use(
+  '/api/votes',
+  voteLimiter,
+  createServiceProxy(services.votes)
+);
+
+app.use('/api/results', createServiceProxy(services.results));
+
+// -----------------------------------------------------------------------------
+// Start Server
+// -----------------------------------------------------------------------------
 
 app.listen(PORT, () => {
-  console.log(`API Gateway listening on port ${PORT}`);
+  console.log(`🚀 API Gateway listening on port ${PORT}`);
 });

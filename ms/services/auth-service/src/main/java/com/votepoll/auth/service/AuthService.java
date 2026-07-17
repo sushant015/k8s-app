@@ -20,11 +20,22 @@ public class AuthService {
     }
 
     public Optional<Admin> authenticate(String email, String password) {
-        return adminRepository.findByEmailAndActiveTrue(email)
-                .filter(a -> passwordEncoder.matches(password, a.getPasswordHash()));
+        Optional<Admin> admin = adminRepository.findByEmailAndActiveTrue(email);
+        if (admin.isEmpty()) {
+            System.out.println("DEBUG: No active admin found for email: " + email);
+            return Optional.empty();
+        }
+        boolean matches = passwordEncoder.matches(password, admin.get().getPasswordHash());
+        if (!matches) {
+            System.out.println("DEBUG: Password mismatch.");
+            System.out.println("DEBUG: Input length: " + password.length());
+            System.out.println("DEBUG: DB Hash: " + admin.get().getPasswordHash());
+        }
+        return admin.filter(a -> matches);
     }
 
     public String issueToken(Admin admin) {
+        System.out.println("DEBUG: AuthService issueToken called for: " + admin.getEmail());
         return jwtService.generateToken(admin);
     }
 }

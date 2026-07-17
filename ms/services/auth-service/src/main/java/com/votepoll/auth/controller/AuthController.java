@@ -21,14 +21,27 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        return authService.authenticate(request.email(), request.password())
-                .<ResponseEntity<?>>map(admin -> ResponseEntity.ok(new LoginResponse(
-                        authService.issueToken(admin),
-                        admin.getId().toString(),
-                        admin.getEmail(),
-                        admin.getRole()
-                )))
-                .orElse(ResponseEntity.status(401).body(Map.of("error", "Invalid credentials")));
+        System.out.println("DEBUG: AuthController login called for: " + request.email());
+        try {
+            return authService.authenticate(request.email(), request.password())
+                    .<ResponseEntity<?>>map(admin -> {
+                        System.out.println("DEBUG: Authentication successful for: " + admin.getEmail());
+                        return ResponseEntity.ok(new LoginResponse(
+                                authService.issueToken(admin),
+                                admin.getId().toString(),
+                                admin.getEmail(),
+                                admin.getRole()
+                        ));
+                    })
+                    .orElseGet(() -> {
+                        System.out.println("DEBUG: Authentication failed for: " + request.email());
+                        return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+                    });
+        } catch (Exception e) {
+            System.err.println("DEBUG: Authentication exception: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     @GetMapping("/validate")
