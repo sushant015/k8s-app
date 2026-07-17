@@ -19,7 +19,6 @@ mailer
 docker-plugin
 docker-workflow
 kubernetes
-blueocean
 build-timeout
 timestamper
 ws-cleanup

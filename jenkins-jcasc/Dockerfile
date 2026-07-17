@@ -25,8 +25,8 @@ COPY casc_configs /usr/share/jenkins/ref/casc_configs
 # Copy seeding jobs (optional) --> move to seperate repo
 # COPY jobs /usr/share/jenkins/ref/jobs
 
-# Copy Groovy init scripts (optional)
-COPY init.groovy.d /usr/share/jenkins/ref/init.groovy.d
+# Init Groovy Scripts
+COPY init.groovy.d/ /usr/share/jenkins/ref/init.groovy.d/
 
 # Environment variable to enable JCasC
-ENV CASC_JENKINS_CONFIG=/usr/share/jenkins/ref/casc_configs
+# ENV CASC_JENKINS_CONFIG=/usr/share/jenkins/ref/casc_configs

@@ -1,0 +1,34 @@
+
+jobs:
+  - script: >
+      folder('Automated Jobs') {
+          displayName('Automated Jobs')
+          description('Automatically managed Jenkins jobs')
+      }
+
+      pipelineJob('Automated Jobs/Jenkins Seed') {
+          description('Bootstrap Job DSL from Git')
+          logRotator {
+              daysToKeep(30)
+              numToKeep(20)
+          }
+
+          definition {
+
+              cpsScm {
+
+                  lightweight(true)
+
+                  scm {
+
+                      git {
+                          remote {
+                              url(System.getenv('SEED_REPO'))
+                          }
+                          branch(System.getenv('SEED_BRANCH'))
+                      }
+                  }
+                  scriptPath('Jenkinsfile')
+              }
+          }
+      }

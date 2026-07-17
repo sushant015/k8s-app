@@ -10,6 +10,10 @@ jenkins:
 
   scmCheckoutRetryCount: 2
 
+  disableRememberMe: false
+
+  labelString: ""
+
   globalNodeProperties:
     - envVars:
         env:
@@ -28,3 +32,9 @@ unclassified:
     url: "${JENKINS_URL}"
     adminAddress: "admin@example.com"
 
+  mailer:
+    replyToAddress: "${ADMIN_EMAIL:-admin@example.com}"
+
+  scmGit:
+    globalConfigName: "${GIT_USERNAME:-Jenkins}"
+    globalConfigEmail: "${GIT_EMAIL:-jenkins@example.com}"

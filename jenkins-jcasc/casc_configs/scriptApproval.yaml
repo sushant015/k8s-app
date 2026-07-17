@@ -1,7 +1,13 @@
 security:
   scriptApproval:
     approvedSignatures:
+      - "method groovy.lang.Script evaluate java.io.File"
+      - "method hudson.model.Item delete"
+      - "method hudson.model.Item getFullName"
+      - "method hudson.model.Item getName"
+      - "method hudson.model.ItemGroup getItems"
       - "method java.io.File eachFile groovy.lang.Closure"
       - "method java.io.File eachFileRecurse groovy.lang.Closure"
+      - "method jenkins.model.Jenkins getItemByFullName java.lang.String"
       - "new java.io.File java.lang.String"
-      - "method groovy.lang.Script evaluate java.io.File"
+      - "staticMethod jenkins.model.Jenkins getInstance"

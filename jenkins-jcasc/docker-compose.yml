@@ -16,16 +16,15 @@ services:
       - "8080:8080"
       - "50000:50000"
 
+    env_file:
+      - .env
+
     environment:
       CASC_JENKINS_CONFIG: /usr/share/jenkins/ref/casc_configs
       JAVA_OPTS: >
         -Djenkins.install.runSetupWizard=false
         -Dcom.amazonaws.sdk.disableEc2Metadata=true
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin123
-      GITHUB_TOKEN: ghp_xxxxx
-      AWS_REGION: us-east-1
-      AWS_DEFAULT_REGION: us-east-1
+      
       AWS_EC2_METADATA_DISABLED: "true"
 
     volumes:
