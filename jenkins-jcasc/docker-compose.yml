@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+
+  jenkins:
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: jenkins-jcasc
+
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+
+    environment:
+      CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
+      JAVA_OPTS: >
+        -Djenkins.install.runSetupWizard=false
+        -Dcom.amazonaws.sdk.disableEc2Metadata=true
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      GITHUB_TOKEN: ghp_xxxxx
+      AWS_EC2_METADATA_DISABLED: "true"
+
+    volumes:
+
+      # New volume for Jenkins Home
+      - jenkins_home:/var/jenkins_home
+
+      # Persist Jenkins Home
+      # - ./data/jenkins_home:/var/jenkins_home
+
+      # JCasC
+      # - ./casc_configs:/var/jenkins_home/casc_configs
+
+      # Job DSL Scripts
+      # - ./jobs:/var/jenkins_home/jobs
+
+      # Groovy Init Scripts
+      # - ./init.groovy.d:/usr/share/jenkins/ref/init.groovy.d
+
+    networks:
+      - jenkins-network
+
+networks:
+  jenkins-network:
+    driver: bridge
+
+volumes:
+  jenkins_home:

@@ -1,0 +1,32 @@
+jenkins:
+  systemMessage: |
+    Jenkins configured automatically using Configuration as Code (JCasC)
+
+  numExecutors: 2
+
+  mode: NORMAL
+
+  scmCheckoutRetryCount: 2
+
+  disableRememberMe: false
+
+  labelString: "docker local"
+
+  projectNamingStrategy: "standard"
+
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+
+  remotingSecurity:
+    enabled: true
+
+  slaveAgentPort: 50000
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+    adminAddress: "admin@example.com"
+
+jobs:
+  - file: "/usr/share/jenkins/ref/jobs/seed.groovy"
