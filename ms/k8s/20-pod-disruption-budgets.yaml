@@ -1,0 +1,33 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vote-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: vote-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend-service

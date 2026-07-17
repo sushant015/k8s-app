@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: poll-service
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/votepoll}
+    username: ${DB_USER:votepoll}
+    password: ${DB_PASSWORD:changeme}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: polls
+
+jwt:
+  secret: ${JWT_SECRET:change-this-jwt-secret-key-min-32-chars!!}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
