@@ -1,65 +1,30 @@
 jenkins:
-  systemMessage: |
-    Jenkins configured automatically using Configuration as Code (JCasC)
 
-  numExecutors: 2
+  systemMessage: |
+    Jenkins GitOps
+    Managed by Configuration as Code
+
+  numExecutors: ${JENKINS_EXECUTORS:-2}
 
   mode: NORMAL
 
   scmCheckoutRetryCount: 2
 
-  disableRememberMe: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: SEED_REPO
+            value: "${SEED_REPO}"
 
-  labelString: "docker local"
+          - key: SEED_BRANCH
+            value: "${SEED_BRANCH:-main}"
 
-  projectNamingStrategy: "standard"
-
-  crumbIssuer:
-    standard:
-      excludeClientIPFromCrumb: false
-
-  remotingSecurity:
-    enabled: true
-
-  slaveAgentPort: 50000
+          - key: GITHUB_CREDENTIAL
+            value: "github-token"
 
 unclassified:
+
   location:
-    url: "http://localhost:8080/"
+    url: "${JENKINS_URL}"
     adminAddress: "admin@example.com"
 
-jobs:
-  - script: >
-      folder('Automated Jobs') {
-          displayName('Automated Jobs')
-          description('Folder containing Jenkins automation jobs')
-      }
-
-      pipelineJob('Automated Jobs/Seed Job') {
-        description('Synchronizes Jenkins jobs from the jenkins-seed-jobs repository')
-        logRotator {
-            daysToKeep(30)
-            numToKeep(20)
-        }
-
-        definition {
-            cpsScm {
-                scm {
-                    git {
-                        remote {
-                            url('https://github.com/sushant015/jenkins-automated-jobs.git')
-                        }
-                        branch('*/main')
-                    }
-                }
-                scriptPath('Jenkinsfile')
-                lightweight(true)
-            }
-        }
-
-        triggers {
-            githubPush()
-            // Uncomment if webhook is unavailable
-            scm('H/5 * * * *')
-        }
-      }
