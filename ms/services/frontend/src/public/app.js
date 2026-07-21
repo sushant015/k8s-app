@@ -144,9 +144,9 @@ async function loadPolls() {
             <span class="badge ${p.status}">${p.status}</span>
             <div style="color:var(--muted);font-size:0.85rem">/poll/${p.slug}</div>
           </div>
-          <div>
-            ${p.status === 'ENDED' ? `<button onclick="publishPoll('${p.id}')">Publish</button>` : ''}
-            <button class="secondary" onclick="location.href='/poll/${p.slug}'">View</button>
+          <div class="action-row">
+            ${p.status !== 'PUBLISHED' && token ? `<button onclick="publishPollResults('${p.slug}')">Publish Results</button>` : ''}
+            <button class="secondary" onclick="location.href='/poll/${p.slug}'">${p.status === 'ENDED' || p.status === 'PUBLISHED' ? 'View Results' : 'View Poll'}</button>
           </div>
         </div>`).join('');
   } catch (err) {
@@ -154,10 +154,13 @@ async function loadPolls() {
   }
 }
 
-async function publishPoll(id) {
+async function publishPollResults(slug) {
   try {
-    await api(`/polls/${id}/publish`, { method: 'POST' });
-    loadPolls();
+    await api(`/results/${slug}/publish`, { method: 'POST' });
+    await loadPolls();
+    if (location.pathname.startsWith('/poll/')) {
+      await renderPollPage(slug);
+    }
   } catch (err) {
     alert(err.message);
   }
@@ -171,7 +174,7 @@ async function renderPollPage(slug) {
     const started = now >= new Date(poll.startAt);
     const ended = now > new Date(poll.endAt);
     const canVote = poll.status === 'ACTIVE' && started && !ended;
-    const showResults = poll.status === 'PUBLISHED' || ended;
+    const showResults = poll.status === 'PUBLISHED' || (token && ended);
 
     let body = `<h2>${poll.title}</h2>`;
     if (poll.description) body += `<p style="color:var(--muted);margin-bottom:1rem">${poll.description}</p>`;
@@ -183,7 +186,7 @@ async function renderPollPage(slug) {
       });
     } else if (showResults) {
       const results = await api(`/results/${slug}`);
-      body += `<p>Total votes: ${results.totalVotes}</p>`;
+      body += `<p><strong>Total votes: ${results.totalVotes}</strong></p>`;
       results.options.forEach(o => {
         body += `<div class="bar-row">
           <div class="bar-label"><span>${o.label}</span><span>${o.voteCount} (${o.percentage}%)</span></div>
@@ -193,11 +196,23 @@ async function renderPollPage(slug) {
       if (poll.status !== 'PUBLISHED') {
         body += `<p style="color:var(--muted);margin-top:1rem">Results are preliminary until published by admin.</p>`;
       }
+      if (token && poll.status === 'ENDED') {
+        body += `<button id="publish-results-btn" style="margin-top:1rem">Publish Results</button>`;
+      }
+    } else if (token && poll.status !== 'PUBLISHED') {
+      // Admin view of an active or draft poll
+      const results = await api(`/results/${slug}`);
+      body += `<p>This poll is not yet published.</p>`;
+      body += `<p><strong>Current vote count: ${results.totalVotes}</strong></p>`;
     } else {
       body += `<p style="color:var(--muted)">This poll is not yet open for voting.</p>`;
     }
 
     document.getElementById('main').innerHTML = `<div class="card">${body}</div>`;
+
+    if (token && poll.status === 'ENDED') {
+      document.getElementById('publish-results-btn')?.addEventListener('click', () => publishPollResults(slug));
+    }
   } catch (err) {
     document.getElementById('main').innerHTML = `<div class="card"><p class="error">${err.message}</p></div>`;
   }
