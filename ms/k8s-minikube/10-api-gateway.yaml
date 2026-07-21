@@ -15,6 +15,7 @@ spec:
     metadata:
       labels:
         app: api-gateway
+        version: latest
     spec:
       containers:
         - name: api-gateway

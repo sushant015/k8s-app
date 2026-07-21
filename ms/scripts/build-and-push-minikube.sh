@@ -29,8 +29,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 NAMESPACE="vote-poll"
-DOCKER_REGISTRY=""  # Empty for local development
-IMAGE_TAG="latest"
+DOCKER_REGISTRY="" # Empty for local development
+TIMESTAMP_TAG=$(date +%Y%m%d-%H%M%S)
 MINIKUBE_PROFILE="minikube"
 
 # List of microservices to build
@@ -151,27 +151,18 @@ done
 
 print_header "PHASE 2: Remove Old Images"
 
-print_step "Removing old Docker images from local machine..."
-for service in "${SERVICES[@]}"; do
-    local_image="${service}:${IMAGE_TAG}"
-    if docker image inspect "$local_image" &> /dev/null; then
-        print_info "Removing: $local_image"
-        docker rmi "$local_image" -f > /dev/null 2>&1 || true
-    fi
-done
-print_success "Local images cleaned"
+print_step "Pruning unused Docker images from local machine..."
+# This removes all dangling images and images not associated with a container.
+docker image prune -a -f
+print_success "Local image cleanup complete."
 
-print_step "Removing old images from Minikube..."
+print_step "Pruning unused Docker images from Minikube..."
+# Switch to Minikube's Docker daemon to run the prune command there.
 eval $(minikube docker-env)
-for service in "${SERVICES[@]}"; do
-    minikube_image="${service}:${IMAGE_TAG}"
-    if docker image inspect "$minikube_image" &> /dev/null; then
-        print_info "Removing: $minikube_image (from Minikube)"
-        docker rmi "$minikube_image" -f > /dev/null 2>&1 || true
-    fi
-done
+docker image prune -a -f
+# Unset the environment variables to return to the local Docker daemon.
 eval $(minikube docker-env --unset)
-print_success "Minikube images cleaned"
+print_success "Minikube image cleanup complete."
 
 # ============================================================================
 # PHASE 3: BUILD DOCKER IMAGES
@@ -179,7 +170,7 @@ print_success "Minikube images cleaned"
 
 print_header "PHASE 3: Build Docker Images"
 
-print_info "Building $(echo ${#SERVICES[@]}) Docker images..."
+print_info "Building $(echo ${#SERVICES[@]}) Docker images with tag: ${TIMESTAMP_TAG}"
 echo ""
 
 for service in "${SERVICES[@]}"; do
@@ -193,7 +184,7 @@ for service in "${SERVICES[@]}"; do
     fi
     
     # Build the Docker image
-    if docker build -t "${service}:${IMAGE_TAG}" "$build_dir" > /tmp/docker_build_${service}.log 2>&1; then
+    if docker build -t "${service}:${TIMESTAMP_TAG}" "$build_dir" > /tmp/docker_build_${service}.log 2>&1; then
         print_success "$service built successfully"
     else
         print_error "Failed to build $service"
@@ -216,7 +207,7 @@ print_step "Loading images into Minikube ($(echo ${#SERVICES[@]}) images)..."
 echo ""
 
 for service in "${SERVICES[@]}"; do
-    image_name="${service}:${IMAGE_TAG}"
+    image_name="${service}:${TIMESTAMP_TAG}"
     print_step "Loading: $image_name"
     
     if minikube image load "$image_name" > /tmp/minikube_load_${service}.log 2>&1; then
@@ -241,9 +232,9 @@ print_step "Verifying images exist in Minikube..."
 echo ""
 
 for service in "${SERVICES[@]}"; do
-    image_name="${service}:${IMAGE_TAG}"
+    image_name="${service}:${TIMESTAMP_TAG}"
     # Use minikube image ls and grep to verify
-    if minikube image ls | grep -q "${service}.*${IMAGE_TAG}"; then
+    if minikube image ls | grep -q "${service}.*${TIMESTAMP_TAG}"; then
         # Getting exact size is less straightforward without docker-env, so we'll just confirm existence
         print_success "$image_name"
     else
@@ -254,3 +245,70 @@ done
 
 echo ""
 print_success "All images verified in Minikube"
+
+# ============================================================================
+# PHASE 5.5: UPDATE KUBERNETES MANIFESTS WITH NEW IMAGE TAG
+# ============================================================================
+
+print_header "PHASE 5.5: Update Kubernetes Manifests"
+
+print_info "Updating YAML files with new image tag: ${TIMESTAMP_TAG}"
+
+# Define the list of manifest files to update
+MANIFESTS=(
+    "ms/k8s-minikube/10-api-gateway.yaml"
+    "ms/k8s-minikube/11-auth-service.yaml"
+    "ms/k8s-minikube/12-user-service.yaml"
+    "ms/k8s-minikube/13-poll-service.yaml"
+    "ms/k8s-minikube/14-vote-service.yaml"
+    "ms/k8s-minikube/15-result-service.yaml"
+    "ms/k8s-minikube/16-frontend-service.yaml"
+)
+
+# Create backups and update files
+for manifest in "${MANIFESTS[@]}"; do
+    if [ -f "$manifest" ]; then
+        # Create a backup of the original file
+        cp "$manifest" "${manifest}.bak"
+        
+        # 1. Use sed to replace the image tag. This is compatible with both GNU and BSD (macOS) sed.
+        sed -i.tmp "s|image: \(.*\):latest|image: \1:${TIMESTAMP_TAG}|g" "$manifest"
+        
+        # 2. Replace the version label placeholder with the current timestamp tag.
+        sed -i.tmp "s|version: latest|version: \"${TIMESTAMP_TAG}\"|g" "$manifest"
+
+        rm "${manifest}.tmp" # Clean up sed's temp file
+
+        print_success "Updated $manifest"
+    else
+        print_error "Manifest file not found: $manifest"
+    fi
+done
+
+# Function to restore backups on exit
+cleanup() {
+    print_info "Restoring original Kubernetes manifests..."
+    for manifest in "${MANIFESTS[@]}"; do
+        if [ -f "${manifest}.bak" ]; then
+            mv "${manifest}.bak" "$manifest"
+        fi
+    done
+    print_success "Manifests restored."
+}
+trap cleanup EXIT # Register the cleanup function to run when the script exits
+
+# ============================================================================
+# PHASE 6: DEPLOY KUBERNETES MANIFESTS & UPDATE IMAGES
+# ============================================================================
+
+print_header "PHASE 6: Deploy & Update Services"
+
+print_step "Applying base Kubernetes manifests (Services, ConfigMaps, etc.)..."
+# Apply all manifests. This creates or updates services, ingress, etc.
+# The changes to the image tags will trigger rolling updates for the deployments.
+kubectl apply -f ms/k8s-minikube/
+print_success "All manifests applied, triggering rolling updates."
+
+print_step "Waiting for PostgreSQL to be ready (if not already)..."
+kubectl wait --for=condition=ready pod -l app=postgres-db -n $NAMESPACE --timeout=300s
+print_success "PostgreSQL is ready."

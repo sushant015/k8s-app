@@ -15,10 +15,11 @@ spec:
     metadata:
       labels:
         app: frontend-service
+        version: latest
     spec:
       containers:
         - name: frontend-service
-          image: frontend-service:latest
+          image: frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

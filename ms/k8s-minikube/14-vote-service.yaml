@@ -7,7 +7,13 @@ metadata:
   labels:
     app: vote-service
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Ensure zero downtime by creating a new pod before terminating an old one.
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: vote-service
@@ -15,6 +21,7 @@ spec:
     metadata:
       labels:
         app: vote-service
+        version: latest
     spec:
       containers:
         - name: vote-service

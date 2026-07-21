@@ -16,8 +16,16 @@ async function api(path, options = {}) {
   if (options.voter) headers['X-Voter-Id'] = getVoterId();
 
   const res = await fetch(`${API}${path}`, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.message || 'Request failed');
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const data = JSON.parse(text);
+      throw new Error(data.error || data.message || 'Request failed');
+    } catch (e) {
+      throw new Error(text || `Request failed with status ${res.status}`);
+    }
+  }
+  const data = await res.json().catch(() => ({})); // Gracefully handle empty responses
   return data;
 }
 
@@ -155,6 +163,10 @@ async function loadPolls() {
 }
 
 async function publishPollResults(slug) {
+  if (!confirm(`Are you sure you want to publish the results for "${slug}"? This cannot be undone.`)) {
+    return;
+  }
+
   try {
     await api(`/results/${slug}/publish`, { method: 'POST' });
     await loadPolls();
@@ -173,8 +185,13 @@ async function renderPollPage(slug) {
     const now = new Date();
     const started = now >= new Date(poll.startAt);
     const ended = now > new Date(poll.endAt);
-    const canVote = poll.status === 'ACTIVE' && started && !ended;
-    const showResults = poll.status === 'PUBLISHED' || (token && ended);
+
+    // Determine what the current user can see/do
+    const isAdmin = !!token;
+    const isPublished = poll.status === 'PUBLISHED';
+    const canVote = poll.status === 'ACTIVE' && started && !ended && !isAdmin; // Admins can't vote
+    const showResultsToPublic = isPublished;
+    const showResultsToAdmin = isAdmin && !isPublished;
 
     let body = `<h2>${poll.title}</h2>`;
     if (poll.description) body += `<p style="color:var(--muted);margin-bottom:1rem">${poll.description}</p>`;
@@ -184,7 +201,7 @@ async function renderPollPage(slug) {
       poll.options.forEach(o => {
         body += `<button class="option-btn" onclick="submitVote('${slug}','${o.id}')">${o.label}</button>`;
       });
-    } else if (showResults) {
+    } else if (showResultsToPublic || showResultsToAdmin) {
       const results = await api(`/results/${slug}`);
       body += `<p><strong>Total votes: ${results.totalVotes}</strong></p>`;
       results.options.forEach(o => {
@@ -193,24 +210,17 @@ async function renderPollPage(slug) {
           <div class="bar-track"><div class="bar-fill" style="width:${o.percentage}%"></div></div>
         </div>`;
       });
-      if (poll.status !== 'PUBLISHED') {
+      if (showResultsToAdmin) {
         body += `<p style="color:var(--muted);margin-top:1rem">Results are preliminary until published by admin.</p>`;
-      }
-      if (token && poll.status === 'ENDED') {
         body += `<button id="publish-results-btn" style="margin-top:1rem">Publish Results</button>`;
       }
-    } else if (token && poll.status !== 'PUBLISHED') {
-      // Admin view of an active or draft poll
-      const results = await api(`/results/${slug}`);
-      body += `<p>This poll is not yet published.</p>`;
-      body += `<p><strong>Current vote count: ${results.totalVotes}</strong></p>`;
     } else {
       body += `<p style="color:var(--muted)">This poll is not yet open for voting.</p>`;
     }
 
     document.getElementById('main').innerHTML = `<div class="card">${body}</div>`;
 
-    if (token && poll.status === 'ENDED') {
+    if (showResultsToAdmin) {
       document.getElementById('publish-results-btn')?.addEventListener('click', () => publishPollResults(slug));
     }
   } catch (err) {

@@ -48,37 +48,27 @@ k8s-minikube/
    minikube addons enable storage-provisioner
    ```
 
-4. Build and load Docker images into Minikube:
-   ```bash
-   # For each microservice
-   docker build -t auth-service:latest ./auth-service
-   minikube image load auth-service:latest
-   
-   # Repeat for other services
-   ```
-
 ### Deploy to Minikube
 
-1. Apply the manifests in order:
-   ```bash
-   # Apply namespace first
-   kubectl apply -f 00-namespace.yaml
-   
-   # Apply ConfigMap and Secrets
-   kubectl apply -f 01-configmap.yaml
-   kubectl apply -f 02-secrets.yaml
-   kubectl apply -f 02-postgres-db.yaml
-   
-   # Wait for PostgreSQL to be ready
-   kubectl wait --for=condition=ready pod -l app=postgres-db -n vote-poll --timeout=300s
-   
-   # Apply all other manifests
-   kubectl apply -f k8s-minikube/
-   ```
+The recommended way to deploy the entire application is to use the automated build script. This script handles building images, loading them into Minikube, and deploying all services with zero-downtime rolling updates.
 
-2. Or use kubectl apply with all files at once:
+1.  **Run the Full Build & Deploy Script:**
+    Navigate to the project root directory and execute the script.
+
+    ```bash
+    # Make the script executable
+    chmod +x ms/scripts/build-and-push-minikube.sh
+
+    # Run the script
+    ./ms/scripts/build-and-push-minikube.sh
+    ```
+
+2.  **For a Single Service Update:**
+    If you only changed one service, you can use the `quick-build.sh` script for a much faster update.
+
    ```bash
-   kubectl apply -f k8s-minikube/
+    ./ms/scripts/quick-build.sh <service-name>
+    # Example: ./ms/scripts/quick-build.sh poll-service
    ```
 
 ### Verify Deployment
