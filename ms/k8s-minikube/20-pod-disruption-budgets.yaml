@@ -1,0 +1,77 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vote-poll-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: user-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: poll-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: poll-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vote-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vote-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: result-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: result-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-service-pdb
+  namespace: vote-poll
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend-service

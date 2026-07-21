@@ -1,0 +1,239 @@
+# PostgreSQL Database for Minikube Development
+# This file creates a PostgreSQL instance for local development
+# For cloud deployments, use Cloud SQL instead (see k8s/01-configmap.yaml)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb-config
+  namespace: vote-poll
+data:
+  init.sql: |
+    -- Vote Polling Platform — PostgreSQL initialization for Minikube
+    -- Mirror of production Cloud SQL schema (ms/database/init.sql)
+
+    -- Enable UUID helpers used by the service tables
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    -- Create schemas
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE SCHEMA IF NOT EXISTS users;
+    CREATE SCHEMA IF NOT EXISTS polls;
+    CREATE SCHEMA IF NOT EXISTS votes;
+    CREATE SCHEMA IF NOT EXISTS results;
+    
+    -- Auth schema
+    CREATE TABLE IF NOT EXISTS auth.admins (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'ADMIN',
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS auth.refresh_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        admin_id UUID NOT NULL REFERENCES auth.admins(id) ON DELETE CASCADE,
+        token_hash VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    
+    -- Users schema (admin profiles)
+    CREATE TABLE IF NOT EXISTS users.profiles (
+        id UUID PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        display_name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    
+    -- Polls schema
+    CREATE TABLE IF NOT EXISTS polls.polls (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug VARCHAR(100) UNIQUE NOT NULL,
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        created_by UUID NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+        start_at TIMESTAMPTZ NOT NULL,
+        end_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT valid_window CHECK (end_at > start_at)
+    );
+    
+    CREATE TABLE IF NOT EXISTS polls.options (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        poll_id UUID NOT NULL REFERENCES polls.polls(id) ON DELETE CASCADE,
+        label VARCHAR(500) NOT NULL,
+        sort_order INT NOT NULL DEFAULT 0
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_polls_slug ON polls.polls(slug);
+    CREATE INDEX IF NOT EXISTS idx_polls_status ON polls.polls(status);
+    
+    -- Votes schema
+    CREATE TABLE IF NOT EXISTS votes.votes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        poll_id UUID NOT NULL,
+        option_id UUID NOT NULL,
+        voter_fingerprint VARCHAR(64) NOT NULL,
+        voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (poll_id, voter_fingerprint)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_votes_poll ON votes.votes(poll_id);
+    
+    -- Results schema
+    CREATE TABLE IF NOT EXISTS results.snapshots (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        poll_id UUID UNIQUE NOT NULL,
+        total_votes INT NOT NULL DEFAULT 0,
+        published BOOLEAN NOT NULL DEFAULT FALSE,
+        published_at TIMESTAMPTZ,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS results.option_totals (
+        snapshot_id UUID NOT NULL REFERENCES results.snapshots(id) ON DELETE CASCADE,
+        option_id UUID NOT NULL,
+        option_label VARCHAR(500) NOT NULL,
+        vote_count INT NOT NULL DEFAULT 0,
+        percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        PRIMARY KEY (snapshot_id, option_id)
+    );
+    
+    -- Seed default admin (password: password — change in production)
+    INSERT INTO auth.admins (email, password_hash, role)
+    VALUES ('admin@votepoll.local', '$2a$10$3wt8vmIwOXE/6GokZsvATeIPEKlgpRdykA7rPKrmMVRCg2AUfK0K.', 'ADMIN')
+    ON CONFLICT (email) DO NOTHING;
+    
+    INSERT INTO users.profiles (id, email, display_name)
+    SELECT id, email, 'System Admin' FROM auth.admins WHERE email = 'admin@votepoll.local'
+    ON CONFLICT (email) DO NOTHING;
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: vote-poll
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres_password
+  POSTGRES_DB: postgres
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: vote-poll
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+  namespace: vote-poll
+  labels:
+    app: postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-initdb
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U postgres
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: postgres-initdb
+          configMap:
+            name: postgres-initdb-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+  namespace: vote-poll
+  labels:
+    app: postgres-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres-db

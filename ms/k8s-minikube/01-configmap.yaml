@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vote-poll-config
+  namespace: vote-poll
+data:
+  AUTH_SERVICE_URL: "http://auth-service:8080"
+  USER_SERVICE_URL: "http://user-service:8080"
+  POLL_SERVICE_URL: "http://poll-service:8080"
+  VOTE_SERVICE_URL: "http://vote-service:8080"
+  RESULT_SERVICE_URL: "http://result-service:8080"
+  API_GATEWAY_URL: "http://api-gateway:8080"
+  # Minikube PostgreSQL Database Configuration
+  DB_HOST: "postgres-db"
+  DB_PORT: "5432"
+  DB_NAME: "postgres"
+
+  # Schemas used by each service against the shared Postgres database
+  DB_SCHEMA_AUTH: "auth"
+  DB_SCHEMA_USERS: "users"
+  DB_SCHEMA_POLLS: "polls"
+  DB_SCHEMA_VOTES: "votes"
+  DB_SCHEMA_RESULTS: "results"
