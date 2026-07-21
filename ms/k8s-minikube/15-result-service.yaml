@@ -22,22 +22,17 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: vote-poll-config
           env:
             - name: DATABASE_URL
-              value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)"
+              valueFrom:
+                secretKeyRef:
+                  name: vote-poll-secrets
+                  key: RESULT_DATABASE_URL
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
                   name: vote-poll-secrets
                   key: DB_USER
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: vote-poll-secrets
-                  key: DB_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
