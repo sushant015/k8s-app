@@ -141,9 +141,12 @@ async function renderAdminDashboard() {
 }
 
 async function loadPolls() {
+  const pollListEl = document.getElementById('poll-list');
+  if (!pollListEl) return; // Do nothing if the poll list isn't on the page
+
   try {
     const polls = await api('/polls');
-    document.getElementById('poll-list').innerHTML = polls.length === 0
+    pollListEl.innerHTML = polls.length === 0
       ? '<p style="color:var(--muted)">No polls yet.</p>'
       : polls.map(p => `
         <div class="poll-list-item">
@@ -152,13 +155,32 @@ async function loadPolls() {
             <span class="badge ${p.status}">${p.status}</span>
             <div style="color:var(--muted);font-size:0.85rem">/poll/${p.slug}</div>
           </div>
-          <div class="action-row">
-            ${p.status !== 'PUBLISHED' && token ? `<button onclick="publishPollResults('${p.slug}')">Publish Results</button>` : ''}
-            <button class="secondary" onclick="location.href='/poll/${p.slug}'">${p.status === 'ENDED' || p.status === 'PUBLISHED' ? 'View Results' : 'View Poll'}</button>
-          </div>
+          <div class="action-row">${getAdminPollActions(p)}</div>
         </div>`).join('');
   } catch (err) {
-    document.getElementById('poll-list').innerHTML = `<p class="error">${err.message}</p>`;
+    pollListEl.innerHTML = `<p class="error">${err.message}</p>`;
+  }
+}
+
+function getAdminPollActions(poll) {
+  let actions = `<button class="secondary" onclick="location.href='/poll/${poll.slug}'">View</button>`;
+  if (poll.status === 'ACTIVE') actions += `<button onclick="updatePollStatus('${poll.slug}', 'PAUSED')">Pause</button>`;
+  if (poll.status === 'PAUSED') actions += `<button onclick="updatePollStatus('${poll.slug}', 'ACTIVE')">Resume</button>`;
+  if (poll.status === 'ACTIVE' || poll.status === 'PAUSED') actions += `<button onclick="updatePollStatus('${poll.slug}', 'ENDED')">End Now</button>`;
+  if (poll.status === 'ENDED') actions += `<button onclick="updatePollStatus('${poll.slug}', 'PUBLISHED')">Publish Results</button>`;
+  return actions;
+}
+
+async function updatePollStatus(slug, status) {
+  if (!confirm(`Are you sure you want to set status to "${status}" for poll "${slug}"?`)) return;
+  try {
+    await api(`/polls/${slug}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    await loadPolls(); // Refresh admin dashboard
+    if (location.pathname.endsWith(slug)) {
+      await renderPollPage(slug); // Refresh poll page if currently viewing
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
   }
 }
 
@@ -186,12 +208,13 @@ async function renderPollPage(slug) {
     const started = now >= new Date(poll.startAt);
     const ended = now > new Date(poll.endAt);
 
-    // Determine what the current user can see/do
     const isAdmin = !!token;
-    const isPublished = poll.status === 'PUBLISHED';
-    const canVote = poll.status === 'ACTIVE' && started && !ended && !isAdmin; // Admins can't vote
-    const showResultsToPublic = isPublished;
-    const showResultsToAdmin = isAdmin && !isPublished;
+    const canVote = poll.status === 'ACTIVE' && !isAdmin;
+    // An admin can see results for any poll that is not DRAFT or SCHEDULED.
+    // The public can only see results if the poll is PUBLISHED.
+    const showResults = poll.status === 'PUBLISHED' ||
+      (isAdmin && ['ACTIVE', 'PAUSED', 'ENDED', 'PUBLISHED'].includes(poll.status));
+    const showAdminActions = isAdmin && poll.status !== 'PUBLISHED';
 
     let body = `<h2>${poll.title}</h2>`;
     if (poll.description) body += `<p style="color:var(--muted);margin-bottom:1rem">${poll.description}</p>`;
@@ -201,7 +224,7 @@ async function renderPollPage(slug) {
       poll.options.forEach(o => {
         body += `<button class="option-btn" onclick="submitVote('${slug}','${o.id}')">${o.label}</button>`;
       });
-    } else if (showResultsToPublic || showResultsToAdmin) {
+    } else if (showResults) {
       const results = await api(`/results/${slug}`);
       body += `<p><strong>Total votes: ${results.totalVotes}</strong></p>`;
       results.options.forEach(o => {
@@ -210,17 +233,24 @@ async function renderPollPage(slug) {
           <div class="bar-track"><div class="bar-fill" style="width:${o.percentage}%"></div></div>
         </div>`;
       });
-      if (showResultsToAdmin) {
-        body += `<p style="color:var(--muted);margin-top:1rem">Results are preliminary until published by admin.</p>`;
-        body += `<button id="publish-results-btn" style="margin-top:1rem">Publish Results</button>`;
+      if (isAdmin && poll.status === 'ENDED') {
+        body += `<p style="color:var(--muted);margin-top:1rem">Results are not yet public.</p>`;
       }
+    } else if (poll.status === 'SCHEDULED') {
+      body += `<p style="color:var(--muted)">This poll is scheduled to start at ${new Date(poll.startAt).toLocaleString()}.</p>`;
+    } else if (poll.status === 'PAUSED') {
+      body += `<p style="color:var(--muted)">Voting for this poll has been temporarily paused by the administrator.</p>`;
     } else {
-      body += `<p style="color:var(--muted)">This poll is not yet open for voting.</p>`;
+      body += `<p style="color:var(--muted)">Voting for this poll has ended. Results will be available once published.</p>`;
     }
 
-    document.getElementById('main').innerHTML = `<div class="card">${body}</div>`;
+    let adminActionsHtml = '';
+    if (showAdminActions) {
+      adminActionsHtml = `<div class="admin-actions">${getAdminPollActions(poll)}</div>`;
+    }
+    document.getElementById('main').innerHTML = `<div class="card">${body}${adminActionsHtml}</div>`;
 
-    if (showResultsToAdmin) {
+    if (showAdminActions) {
       document.getElementById('publish-results-btn')?.addEventListener('click', () => publishPollResults(slug));
     }
   } catch (err) {

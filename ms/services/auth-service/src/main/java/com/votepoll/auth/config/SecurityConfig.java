@@ -26,7 +26,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/api/auth/**").permitAll()
+                .requestMatchers("/actuator/health", "/auth/**").permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(requestLoggingFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

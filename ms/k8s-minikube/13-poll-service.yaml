@@ -25,8 +25,8 @@ spec:
     spec:
       containers:
         - name: poll-service
-          image: poll-service:latest
-          imagePullPolicy: IfNotPresent
+          image: poll-service:20260723-200028
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
           envFrom:

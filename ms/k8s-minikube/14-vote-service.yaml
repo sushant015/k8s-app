@@ -25,8 +25,8 @@ spec:
     spec:
       containers:
         - name: vote-service
-          image: vote-service:latest
-          imagePullPolicy: IfNotPresent
+          image: vote-service:20260723-200028
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
           env:

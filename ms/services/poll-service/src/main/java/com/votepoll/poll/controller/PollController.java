@@ -1,68 +1,48 @@
 package com.votepoll.poll.controller;
 
-import com.votepoll.poll.dto.*;
-import com.votepoll.poll.service.JwtValidator;
+import com.votepoll.poll.dto.CreatePollRequest;
+import com.votepoll.poll.dto.PollResponse;
+import com.votepoll.poll.dto.UpdatePollStatusRequest;
 import com.votepoll.poll.service.PollService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/polls")
+@RequestMapping("/polls")
 public class PollController {
-    private final PollService pollService;
-    private final JwtValidator jwtValidator;
 
-    public PollController(PollService pollService, JwtValidator jwtValidator) {
+    private final PollService pollService;
+
+    public PollController(PollService pollService) {
         this.pollService = pollService;
-        this.jwtValidator = jwtValidator;
     }
 
     @PostMapping
-    public ResponseEntity<?> create(
-            @RequestHeader(value = "Authorization", required = false) String auth,
-            @RequestBody CreatePollRequest request) {
-        return jwtValidator.extractAdminId(auth)
-                .<ResponseEntity<?>>map(adminId -> {
-                    try {
-                        return ResponseEntity.status(201).body(pollService.createPoll(request, adminId));
-                    } catch (IllegalArgumentException e) {
-                        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-                    }
-                })
-                .orElse(ResponseEntity.status(401).body(Map.of("error", "Unauthorized")));
+    public ResponseEntity<PollResponse> createPoll(@RequestBody CreatePollRequest req,
+                                                   @RequestHeader("X-User-Id") UUID adminId) {
+        PollResponse pollResponse = pollService.createPoll(req, adminId);
+        return new ResponseEntity<>(pollResponse, HttpStatus.CREATED);
     }
 
     @GetMapping
-    public ResponseEntity<?> list(@RequestHeader(value = "Authorization", required = false) String auth) {
-        return jwtValidator.extractAdminId(auth)
-                .<ResponseEntity<?>>map(adminId -> ResponseEntity.ok(pollService.listByAdmin(adminId)))
-                .orElse(ResponseEntity.status(401).body(Map.of("error", "Unauthorized")));
+    public ResponseEntity<List<PollResponse>> listPollsByAdmin(@RequestHeader("X-User-Id") UUID adminId) {
+        return ResponseEntity.ok(pollService.listByAdmin(adminId));
     }
 
     @GetMapping("/{slug}")
-    public ResponseEntity<?> getBySlug(@PathVariable String slug) {
-        try {
-            return ResponseEntity.ok(pollService.getBySlug(slug));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        }
+    public ResponseEntity<PollResponse> getPollBySlug(@PathVariable String slug) {
+        return ResponseEntity.ok(pollService.getBySlug(slug));
     }
 
-    @PostMapping("/{id}/publish")
-    public ResponseEntity<?> publish(
-            @PathVariable UUID id,
-            @RequestHeader(value = "Authorization", required = false) String auth) {
-        return jwtValidator.extractAdminId(auth)
-                .<ResponseEntity<?>>map(adminId -> {
-                    try {
-                        return ResponseEntity.ok(pollService.publish(id, adminId));
-                    } catch (Exception e) {
-                        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-                    }
-                })
-                .orElse(ResponseEntity.status(401).body(Map.of("error", "Unauthorized")));
+    @PatchMapping("/{slug}/status")
+    public ResponseEntity<PollResponse> updatePollStatus(@PathVariable String slug,
+                                                         @RequestBody UpdatePollStatusRequest req,
+                                                         @RequestHeader("X-User-Id") UUID adminId) {
+        PollResponse pollResponse = pollService.updatePollStatus(slug, req, adminId);
+        return ResponseEntity.ok(pollResponse);
     }
 }

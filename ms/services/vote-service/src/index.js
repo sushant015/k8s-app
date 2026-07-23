@@ -26,7 +26,7 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-app.post('/api/votes/:slug', async (req, res) => {
+app.post('/votes/:slug', async (req, res) => {
   const { optionId } = req.body;
   if (!optionId) {
     return res.status(400).json({ error: 'optionId is required' });
@@ -47,9 +47,13 @@ app.post('/api/votes/:slug', async (req, res) => {
     }
 
     const poll = pollResult.rows[0];
-    const now = new Date();
-    if (poll.status !== 'ACTIVE' || now < new Date(poll.start_at) || now > new Date(poll.end_at)) {
+    if (poll.status !== 'ACTIVE') {
       await client.query('ROLLBACK');
+      return res.status(403).json({ error: `Poll is not active for voting. Current status: ${poll.status}` });
+    }
+
+    const now = new Date();
+    if (now < new Date(poll.start_at) || now > new Date(poll.end_at)) {
       return res.status(403).json({ error: 'Poll is not open for voting' });
     }
 

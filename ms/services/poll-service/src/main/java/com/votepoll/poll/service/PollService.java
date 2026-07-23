@@ -34,7 +34,13 @@ public class PollService {
         poll.setCreatedBy(adminId);
         poll.setStartAt(req.startAt());
         poll.setEndAt(req.endAt());
-        poll.setStatus(PollStatus.ACTIVE);
+
+        // Set initial status based on start time
+        if (req.startAt().isAfter(Instant.now())) {
+            poll.setStatus(PollStatus.SCHEDULED);
+        } else {
+            poll.setStatus(PollStatus.ACTIVE);
+        }
 
         for (int i = 0; i < req.options().size(); i++) {
             PollOption option = new PollOption();
@@ -59,17 +65,45 @@ public class PollService {
     }
 
     @Transactional
-    public PollResponse publish(UUID pollId, UUID adminId) {
-        Poll poll = pollRepository.findById(pollId)
+    public PollResponse updatePollStatus(String slug, UpdatePollStatusRequest req, UUID adminId) {
+        Poll poll = pollRepository.findBySlug(slug)
                 .orElseThrow(() -> new IllegalArgumentException("Poll not found"));
+
         if (!poll.getCreatedBy().equals(adminId)) {
             throw new SecurityException("Not authorized");
         }
-        if (poll.getStatus() != PollStatus.ENDED && poll.getStatus() != PollStatus.ACTIVE) {
-            throw new IllegalStateException("Poll cannot be published in current status");
+
+        PollStatus newStatus = req.status();
+        // Add business logic for valid status transitions
+        switch (newStatus) {
+            case PAUSED:
+                if (poll.getStatus() != PollStatus.ACTIVE) throw new IllegalStateException("Only active polls can be paused.");
+                break;
+            case ACTIVE: // Resume
+                if (poll.getStatus() != PollStatus.PAUSED) throw new IllegalStateException("Only paused polls can be resumed.");
+                break;
+            case ENDED: // Force-end
+                if (poll.getStatus() != PollStatus.ACTIVE && poll.getStatus() != PollStatus.PAUSED) {
+                    throw new IllegalStateException("Only active or paused polls can be ended.");
+                }
+                break;
+            case PUBLISHED:
+                if (poll.getStatus() != PollStatus.ENDED) {
+                    throw new IllegalStateException("Poll must be ended before publishing results.");
+                }
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid target status: " + newStatus);
         }
-        poll.setStatus(PollStatus.PUBLISHED);
+
+        poll.setStatus(newStatus);
         return toResponse(pollRepository.save(poll));
+    }
+
+    // This method is now deprecated in favor of updatePollStatus but kept for compatibility if needed.
+    @Transactional
+    public PollResponse publish(UUID pollId, UUID adminId) {
+        return updatePollStatus(pollRepository.findById(pollId).orElseThrow().getSlug(), new UpdatePollStatusRequest(PollStatus.PUBLISHED), adminId);
     }
 
     @Transactional

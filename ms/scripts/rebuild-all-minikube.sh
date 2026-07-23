@@ -1,14 +1,16 @@
 #!/bin/bash
 
 # ============================================================================
-# Build, Load, and Deploy Script for Minikube
+# Full Rebuild & Deploy Script for Minikube
 # ============================================================================
 # This script:
-# 1. Removes old Docker images from local machine
-# 2. Removes images from Minikube
-# 3. Rebuilds Docker images from source
-# 4. Loads images into Minikube
-# 5. Deploys to Kubernetes via kubectl apply
+# 1. Validates the local environment (Minikube, kubectl).
+# 2. Cleans up old Docker images.
+# 3. Rebuilds all microservice images from source with a unique timestamp tag.
+# 4. Loads the new images into the Minikube cluster.
+# 5. Temporarily updates Kubernetes manifests with the new image tags.
+# 6. Applies the manifests to trigger a rolling update for all services.
+# 7. Restores the original manifests, ensuring git history remains clean.
 # ============================================================================
 
 set -e
@@ -35,13 +37,13 @@ MINIKUBE_PROFILE="minikube"
 
 # List of microservices to build
 SERVICES=(
-    "auth-service"
+    "frontend"
     "user-service"
     "poll-service"
     "vote-service"
     "result-service"
     "api-gateway"
-    "frontend"
+    "auth-service"
 )
 
 # ============================================================================
@@ -50,9 +52,9 @@ SERVICES=(
 
 print_header() {
     echo ""
-    echo "╔════════════════════════════════════════════════════════════════════════╗"
+    echo "╔═════════════════════════════════════════════════════════════════════════════╗"
     echo "║  $1"
-    echo "╚════════════════════════════════════════════════════════════════════════╝"
+    echo "╚═════════════════════════════════════════════════════════════════════════════╝"
     echo ""
 }
 
@@ -98,7 +100,7 @@ check_dockerfile_exists() {
 # MAIN SCRIPT
 # ============================================================================
 
-print_header "Minikube Build, Load & Deploy Script"
+print_header "Minikube Full Rebuild & Deploy Script"
 
 # ============================================================================
 # PHASE 1: VALIDATION
@@ -149,19 +151,19 @@ done
 # PHASE 2: REMOVE OLD IMAGES
 # ============================================================================
 
-print_header "PHASE 2: Remove Old Images"
+print_header "PHASE 2: Clean Up Old Images"
 
 print_step "Pruning unused Docker images from local machine..."
 # This removes all dangling images and images not associated with a container.
-docker image prune -a -f
+docker image prune -f
 print_success "Local image cleanup complete."
 
 print_step "Pruning unused Docker images from Minikube..."
 # Switch to Minikube's Docker daemon to run the prune command there.
 eval $(minikube docker-env)
-docker image prune -a -f
+docker image prune -f
 # Unset the environment variables to return to the local Docker daemon.
-eval $(minikube docker-env --unset)
+eval $(minikube -p "$MINIKUBE_PROFILE" docker-env --unset)
 print_success "Minikube image cleanup complete."
 
 # ============================================================================
@@ -177,11 +179,7 @@ for service in "${SERVICES[@]}"; do
     print_step "Building: $service"
     
     service_path="ms/services/$service"
-    # Check if service directory has nested services (e.g., auth-service/auth-service)
     build_dir="./$service_path"
-    if [ -d "./$service_path/$service" ]; then
-        build_dir="./$service_path"
-    fi
     
     # Build the Docker image
     if docker build -t "${service}:${TIMESTAMP_TAG}" "$build_dir" > /tmp/docker_build_${service}.log 2>&1; then
@@ -249,7 +247,7 @@ print_success "All images verified in Minikube"
 # ============================================================================
 # PHASE 5.5: UPDATE KUBERNETES MANIFESTS WITH NEW IMAGE TAG
 # ============================================================================
-
+#
 print_header "PHASE 5.5: Update Kubernetes Manifests"
 
 print_info "Updating YAML files with new image tag: ${TIMESTAMP_TAG}"
@@ -262,7 +260,7 @@ MANIFESTS=(
     "ms/k8s-minikube/13-poll-service.yaml"
     "ms/k8s-minikube/14-vote-service.yaml"
     "ms/k8s-minikube/15-result-service.yaml"
-    "ms/k8s-minikube/16-frontend-service.yaml"
+    "ms/k8s-minikube/16-frontend.yaml"
 )
 
 # Create backups and update files
@@ -271,12 +269,13 @@ for manifest in "${MANIFESTS[@]}"; do
         # Create a backup of the original file
         cp "$manifest" "${manifest}.bak"
         
-        # 1. Use sed to replace the image tag. This is compatible with both GNU and BSD (macOS) sed.
-        sed -i.tmp "s|image: \(.*\):latest|image: \1:${TIMESTAMP_TAG}|g" "$manifest"
-        
-        # 2. Replace the version label placeholder with the current timestamp tag.
-        sed -i.tmp "s|version: latest|version: \"${TIMESTAMP_TAG}\"|g" "$manifest"
+        # 1. Get the service name from the filename (e.g., "10-api-gateway.yaml" -> "api-gateway")
+        service_name=$(basename "$manifest" .yaml | sed 's/^[0-9]*-//')
 
+        # 2. Use sed to replace the image tag. This is compatible with both GNU and BSD (macOS) sed.
+        sed -i.tmp "s|image: ${service_name}:.*|image: ${service_name}:${TIMESTAMP_TAG}|g" "$manifest"
+        # 3. Also update the version label in the template metadata
+        sed -i.tmp "s|version: latest|version: \"${TIMESTAMP_TAG}\"|g" "$manifest"
         rm "${manifest}.tmp" # Clean up sed's temp file
 
         print_success "Updated $manifest"
@@ -301,14 +300,34 @@ trap cleanup EXIT # Register the cleanup function to run when the script exits
 # PHASE 6: DEPLOY KUBERNETES MANIFESTS & UPDATE IMAGES
 # ============================================================================
 
-print_header "PHASE 6: Deploy & Update Services"
+print_header "PHASE 6: Deploy to Kubernetes"
 
-print_step "Applying base Kubernetes manifests (Services, ConfigMaps, etc.)..."
+print_step "Applying all Kubernetes manifests from 'ms/k8s-minikube/'..."
 # Apply all manifests. This creates or updates services, ingress, etc.
 # The changes to the image tags will trigger rolling updates for the deployments.
 kubectl apply -f ms/k8s-minikube/
 print_success "All manifests applied, triggering rolling updates."
 
 print_step "Waiting for PostgreSQL to be ready (if not already)..."
-kubectl wait --for=condition=ready pod -l app=postgres-db -n $NAMESPACE --timeout=300s
+if ! kubectl wait --for=condition=ready pod -l app=postgres-db -n $NAMESPACE --timeout=300s; then
+    print_error "PostgreSQL did not become ready in time. Check logs:"
+    echo "kubectl logs -n $NAMESPACE -l app=postgres-db"
+    exit 1
+fi
 print_success "PostgreSQL is ready."
+
+print_step "Waiting for all deployments to complete their rollout..."
+kubectl wait --for=condition=Available -n $NAMESPACE deployment --all --timeout=300s
+print_success "All services have been deployed successfully!"
+
+print_header "✅ Deployment Complete!"
+print_info "The application stack is now running in Minikube."
+echo ""
+print_info "Access the application:"
+echo "  - Frontend: http://$(minikube ip):3000 (after port-forwarding)"
+echo "  - API Gateway: http://$(minikube ip):8080 (after port-forwarding)"
+echo ""
+print_info "Next steps:"
+echo "  - To access services, run: 'kubectl port-forward -n $NAMESPACE svc/frontend 3000:8080'"
+echo "  - To view all running pods, run: 'kubectl get pods -n $NAMESPACE'"
+echo "  - To follow logs for a service, run: 'kubectl logs -n $NAMESPACE -l app=poll-service -f'"

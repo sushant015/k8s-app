@@ -17,47 +17,12 @@ minikube status
 
 
 # ============================================================================
-# PHASE 2: BUILD DOCKER IMAGES
+# PHASE 2: BUILD & DEPLOY
 # ============================================================================
 
-# Build auth service
-docker build -t auth-service:latest ./auth-service
-minikube image load auth-service:latest
-
-# Build user service
-docker build -t user-service:latest ./user-service
-minikube image load user-service:latest
-
-# Build poll service
-docker build -t poll-service:latest ./poll-service
-minikube image load poll-service:latest
-
-# Build vote service
-docker build -t vote-service:latest ./vote-service
-minikube image load vote-service:latest
-
-# Build result service
-docker build -t result-service:latest ./result-service
-minikube image load result-service:latest
-
-# Build api gateway
-docker build -t api-gateway:latest ./api-gateway
-minikube image load api-gateway:latest
-
-# Build frontend
-docker build -t frontend-service:latest ./frontend
-minikube image load frontend-service:latest
-
-# Verify images are loaded in Minikube
-minikube image ls | grep service
-
-
-# ============================================================================
-# PHASE 3: DEPLOY KUBERNETES MANIFESTS
-# ============================================================================
-
-# Deploy all manifests
-kubectl apply -f ms/k8s-minikube/
+# The recommended way to build, load, and deploy all services.
+# Run this from the project root.
+./ms/scripts/rebuild-all-minikube.sh
 
 # Wait for PostgreSQL to be ready (IMPORTANT!)
 kubectl wait --for=condition=ready pod -l app=postgres-db \
@@ -99,7 +64,7 @@ kubectl port-forward -n vote-poll svc/postgres-db 5432:5432
 kubectl port-forward -n vote-poll svc/api-gateway 8080:8080
 
 # Terminal 3: Frontend access
-kubectl port-forward -n vote-poll svc/frontend-service 3000:3000
+kubectl port-forward -n vote-poll svc/frontend 3000:8080
 
 
 # ============================================================================
@@ -134,22 +99,22 @@ psql -h localhost -U postgres -d result_db -c "SELECT 1;"
 # ============================================================================
 
 # Test API Gateway health
-curl http://localhost:8080/api/health
+curl http://localhost:8080/health
 
-# Test Auth Service health
-curl http://localhost:8080/api/auth/health
+# Test Auth Service health (via gateway)
+curl http://localhost:8080/api/auth/actuator/health
 
-# Test User Service health
-curl http://localhost:8080/api/user/health
+# Test User Service health (via gateway)
+curl http://localhost:8080/api/users/health
 
-# Test Poll Service health
-curl http://localhost:8080/api/poll/health
+# Test Poll Service health (via gateway)
+curl http://localhost:8080/api/polls/actuator/health
 
-# Test Vote Service health
-curl http://localhost:8080/api/vote/health
+# Test Vote Service health (via gateway)
+curl http://localhost:8080/api/votes/health
 
-# Test Result Service health
-curl http://localhost:8080/api/result/health
+# Test Result Service health (via gateway)
+curl http://localhost:8080/api/results/health
 
 
 # ============================================================================

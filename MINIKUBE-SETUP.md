@@ -104,11 +104,35 @@ Detailed comparison showing:
 
 ## 🚀 Quick Start
 
-### Step 1: Start Minikube
+### Step 1: Manage Minikube
 
 ```bash
 # Start Minikube with sufficient resources
 minikube start --cpus=4 --memory=4096
+
+# Verify the Cluster
+kubectl get nodes
+kubectl get pods -A
+
+# Enable Useful Add-ons
+minikube addons enable ingress
+minikube addons enable metrics-server
+
+# Open the Kubernetes Dashboard (Optional)
+minikube dashboard
+
+# Check the current status
+minikube status
+
+# Stop the cluster (keeps data)
+minikube stop
+
+# Restart the cluster
+minikube stop
+minikube start
+
+#Delete the cluster
+minikube delete
 
 # Enable storage provisioner for persistent volumes
 minikube addons enable storage-provisioner

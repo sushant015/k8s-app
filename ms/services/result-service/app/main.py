@@ -112,13 +112,13 @@ async def compute_results(conn, slug: str) -> PollResults:
     )
 
 
-@app.get("/api/results/{slug}", response_model=PollResults)
+@app.get("/results/{slug}", response_model=PollResults)
 async def get_results(slug: str):
     async with pool.acquire() as conn:
         return await compute_results(conn, slug)
 
 
-@app.post("/api/results/{slug}/compute")
+@app.post("/results/{slug}/compute")
 async def compute_and_store(slug: str):
     async with pool.acquire() as conn:
         results = await compute_results(conn, slug)
@@ -159,7 +159,7 @@ async def compute_and_store(slug: str):
         return {"message": "Results computed", "totalVotes": results.totalVotes}
 
 
-@app.post("/api/results/{slug}/publish")
+@app.post("/results/{slug}/publish")
 async def publish_results(slug: str):
     async with pool.acquire() as conn:
         poll = await conn.fetchrow(
