@@ -52,6 +52,7 @@ terraform init
 # Apply the configuration
 # Replace YOUR_IMAGE_TAG with the tag from the previous step
 terraform apply -var="jenkins_image_tag=YOUR_IMAGE_TAG"
+
 ```
 
 Terraform will now create the Minikube cluster and deploy Jenkins. This may take several minutes.
@@ -73,6 +74,96 @@ To tear down the entire environment (Minikube cluster and all deployed resources
 ```bash
 # From the k8s-app/terraform/jenkins-jcasc/ directory
 terraform destroy -var="jenkins_image_tag=any-tag"
+```
+
+> **Note:** You must provide the variable on destroy, but its value doesn't matter for the destroy operation.
+
+
+## 🧹 Troublshooting
+
+Terraform installed success but you are not able to view helm charts on k8s
+
+```bash
+# Install the Helm CLI
+brew install helm
+helm version
+
+# Check what Terraform thinks it installed
+terraform state list
+
+# Then inspect the release:
+terraform state show helm_release.jenkins
+
+# Verify your chart
+ls -R ../../../k8s-helm-charts/tools/jenkins-jcasc
+
+# Verify the chart renders resources
+helm template my-jenkins ../../../k8s-helm-charts/tools/jenkins-jcasc
+
+## If the output is empty or contains only comments, then the problem is in the chart (for example, templates are wrapped in conditions that evaluate to false).
+
+```
+
+Debug the helm installation / status / fail issues
+
+```bash
+
+# Check Helm release status
+helm list -A
+
+# If the release exists:
+helm status my-jenkins -n jenkins
+
+# View all Kubernetes resources created by the release
+kubectl get all -n jenkins
+
+kubectl get pvc -n jenkins
+kubectl get configmap -n jenkins
+kubectl get secret -n jenkins
+kubectl get ingress -n jenkins
+kubectl get events -n jenkins --sort-by=.lastTimestamp
+
+# Check the logs
+kubectl logs <pod-name> -n jenkins
+
+## If the container restarted:
+kubectl logs <pod-name> -n jenkins --previous
+
+## See what Helm actually rendered
+helm get manifest my-jenkins -n jenkins
+
+## Check Helm values
+helm get values my-jenkins -n jenkins # user-applied at runtime only
+helm get values my-jenkins -n jenkins --all # show combined values 
+
+# Review the generated YAML before deployment.
+## Without installing:
+
+helm template my-jenkins ./helm-charts/jenkins-jcasc
+
+## With your values:
+
+helm template my-jenkins ./helm-charts/jenkins-jcasc \
+  --values ./helm-charts/jenkins-jcasc/values.yaml
+
+## Or:
+
+helm template my-jenkins ./helm-charts/jenkins-jcasc \
+  --set image.tag=20260727-165704
+
+# Check release history
+helm history my-jenkins -n jenkins
+
+# Compare rendered YAML with the cluster
+helm template my-jenkins ./helm-charts/jenkins-jcasc > rendered.yaml
+
+# Enable Helm debugging
+helm upgrade \
+  --install my-jenkins \
+  ./helm-charts/jenkins-jcasc \
+  -n jenkins \
+  --debug
+
 ```
 
 > **Note:** You must provide the variable on destroy, but its value doesn't matter for the destroy operation.

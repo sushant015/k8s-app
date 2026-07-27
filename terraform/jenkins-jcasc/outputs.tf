@@ -1,11 +1,10 @@
-output "minikube_ip" {
-  value       = minikube_cluster.jenkins_cluster.ip_address
-  description = "The IP address of the Minikube cluster."
+output "namespace" {
+  value = kubernetes_namespace.jenkins.metadata[0].name
 }
 
-output "jenkins_url" {
-  value       = "http://${minikube_cluster.jenkins_cluster.ip_address}:30080"
-  description = "The URL to access the Jenkins UI."
+output "jenkins_url_command" {
+  description = "Run this command to get the Jenkins URL. The service is exposed on NodePort 30080."
+  value       = "echo \"Jenkins URL: http://$(minikube ip):30080\""
 }
 
 output "jenkins_admin_password_command" {

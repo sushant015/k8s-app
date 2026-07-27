@@ -36,7 +36,7 @@ services:
       # - ./data/jenkins_home:/var/jenkins_home
 
       # JCasC
-      # - ./casc_configs:/var/jenkins_home/casc_configs
+      - ./casc_configs:/usr/share/jenkins/ref/casc_configs
 
       # Job DSL Scripts
       # - ./jobs:/var/jenkins_home/jobs

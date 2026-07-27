@@ -1,69 +1,90 @@
 terraform {
+  required_version = "~> 1.7.0"
+
   required_providers {
-    minikube = {
-      source  = "gavinbunney/minikube"
-      version = ">= 1.11.0"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.38"
     }
+
     helm = {
       source  = "hashicorp/helm"
-      version = ">= 2.8.0"
+      version = "~> 2.17"
     }
   }
 }
 
-# 1. Provision the Minikube cluster with required addons
-resource "minikube_cluster" "jenkins_cluster" {
-  cluster_name = "jenkins-dev"
-  driver       = "docker"
-  cpus         = 4
-  memory       = "4g"
+#################################################
+# Kubernetes Provider
+#################################################
 
-  # Enable addons required for persistence and monitoring
-  addons = [
-    "storage-provisioner",
-    "metrics-server",
-    "ingress"
-  ]
-}
-
-# 2. Configure the Kubernetes provider to connect to the new Minikube cluster
-# The Helm provider will use the default Kubernetes provider configuration.
 provider "kubernetes" {
-  host                   = minikube_cluster.jenkins_cluster.host
-  client_certificate     = base64decode(minikube_cluster.jenkins_cluster.client_certificate)
-  client_key             = base64decode(minikube_cluster.jenkins_cluster.client_key)
-  cluster_ca_certificate = base64decode(minikube_cluster.jenkins_cluster.cluster_ca_certificate)
+  config_path    = pathexpand("~/.kube/config")
+  config_context = "minikube"
 }
 
-# 3. Configure the Helm provider (uses the above kubernetes provider)
-provider "helm" {}
+#################################################
+# Helm Provider
+#################################################
 
-# 3. Deploy the jenkins-jcasc Helm chart from the local path
+provider "helm" {
+  kubernetes {
+    config_path    = pathexpand("~/.kube/config")
+    config_context = "minikube"
+  }
+}
+
+#################################################
+# Namespace
+#################################################
+
+resource "kubernetes_namespace" "jenkins" {
+  metadata {
+    name = "jenkins"
+  }
+}
+
+#################################################
+# Locals
+#################################################
+
+locals {
+  casc_config_files = fileset("${path.module}/../../jenkins-jcasc/casc_configs", "**/*.yaml")
+}
+
+####################################
+# Jenkins Helm Chart
+####################################
+
 resource "helm_release" "jenkins" {
-  # This ensures Helm waits for the cluster to be ready
-  depends_on = [minikube_cluster.jenkins_cluster]
+
+  depends_on = [
+    kubernetes_namespace.jenkins
+  ]
 
   name             = "my-jenkins"
-  # Use the chart from the Git repository.
-  # The format is <repo_url>.git//<path_to_chart_in_repo>
-  chart            = "https://github.com/sushant015/k8s-helm-charts.git//tools/jenkins-jcasc"
   namespace        = "jenkins"
-  create_namespace = true
-  wait             = true
-  timeout          = 300
+  create_namespace = false
 
-  # Set values from values.yaml
+  chart = "${path.module}/../../../k8s-helm-charts/tools/jenkins-jcasc"
+  wait             = true
+  timeout          = 600
+  cleanup_on_fail  = true
+  dependency_update = true
+
   values = [
     yamlencode({
       image = {
-        tag = var.jenkins_image_tag
+        tag  = var.jenkins_image_tag
       }
-      # jcasc = {
-      #   enabled = true
-      #   configScripts = {
-      #     "jenkins-casc-config" = file("${path.module}/jenkins-casc.yaml")
-      #   }
-      # }
+      # Dynamically load all JCasC files from the casc_configs directory.
+      # This is a powerful pattern that keeps your configuration separate from your deployment logic.
+      jcasc = {
+        enabled       = true
+        configScripts = { for filename in local.casc_config_files :
+          filename => file("${path.module}/../../jenkins-jcasc/casc_configs/${filename}")
+        }
+      }
     })
   ]
 }

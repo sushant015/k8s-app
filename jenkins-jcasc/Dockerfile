@@ -20,7 +20,7 @@ COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 
 # Copy initial JCasC configuration
-COPY casc_configs /usr/share/jenkins/ref/casc_configs
+# COPY casc_configs /usr/share/jenkins/ref/casc_configs
 
 # Copy seeding jobs (optional) --> move to seperate repo
 # COPY jobs /usr/share/jenkins/ref/jobs
