@@ -23,12 +23,26 @@ Follow these steps to build your Jenkins image and deploy it with Terraform.
 -   **Docker**: Install Guide
 -   **kubectl**: Install Guide
 -   **Minikube**: Install Guide
+-   **Helm**: Install Guide
+
+```bash
+
+brew install tfenv
+tfenv use 1.7.1
+terraform --version
+
+brew install helm
+helm version
+
+
+```
 
 ### 2. Build the Jenkins Docker Image
 
 Before running Terraform, you must build the custom Jenkins Docker image. The `build.sh` script is located in `k8s-app/jenkins-jcasc/`.
 
 ```bash
+
 # From the repository root, navigate to the Jenkins image build directory
 cd k8s-app/jenkins-jcasc/
 
@@ -43,6 +57,20 @@ The script will output a full image name, like `jenkins-jcasc:20231027-123456`. 
 Now, navigate to this directory (`k8s-app/terraform/jenkins-jcasc/`) and run Terraform, passing the image tag you just copied.
 
 ```bash
+
+# Start minikube cluster
+
+minikube start \
+  --driver=docker \
+  --cpus=4 \
+  --memory=4096 \
+  --addons=ingress \
+  --addons=metrics-server
+
+# Then verify:
+kubectl config current-context
+kubectl get nodes
+
 # From the repository root, navigate to this terraform directory
 cd k8s-app/terraform/jenkins-jcasc/
 
@@ -139,17 +167,18 @@ helm get values my-jenkins -n jenkins # user-applied at runtime only
 helm get values my-jenkins -n jenkins --all # show combined values 
 
 # Review the generated YAML before deployment.
-## Without installing:
 
+# Validates your chart before deployment.
+helm lint ./charts/jenkins-jcasc
+
+## Without installing:
 helm template my-jenkins ./helm-charts/jenkins-jcasc
 
 ## With your values:
-
 helm template my-jenkins ./helm-charts/jenkins-jcasc \
   --values ./helm-charts/jenkins-jcasc/values.yaml
 
 ## Or:
-
 helm template my-jenkins ./helm-charts/jenkins-jcasc \
   --set image.tag=20260727-165704
 
@@ -165,6 +194,9 @@ helm upgrade \
   ./helm-charts/jenkins-jcasc \
   -n jenkins \
   --debug
+
+# Rolls back to a previous revision.
+helm rollback my-jenkins 1
 
 ```
 
