@@ -1,0 +1,9 @@
+jenkins:
+  systemMessage: "Jenkins configured automatically by Terraform and JCasC"
+  numExecutors: 2
+  scmCheckoutRetryCount: 0
+  label: "master"
+  mode: NORMAL
+  security:
+    globalJobDslSecurity:
+      useScriptSecurity: false
