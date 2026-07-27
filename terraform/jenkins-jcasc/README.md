@@ -52,6 +52,8 @@ terraform init
 # Apply the configuration
 # Replace YOUR_IMAGE_TAG with the tag from the previous step
 terraform apply -var="jenkins_image_tag=YOUR_IMAGE_TAG"
+kubectl port-forward -n jenkins svc/my-jenkins-jenkins-jcasc 3000:8080
+
 
 ```
 

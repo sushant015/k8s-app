@@ -44,14 +44,6 @@ resource "kubernetes_namespace" "jenkins" {
   }
 }
 
-#################################################
-# Locals
-#################################################
-
-locals {
-  casc_config_files = fileset("${path.module}/../../jenkins-jcasc/casc_configs", "**/*.yaml")
-}
-
 ####################################
 # Jenkins Helm Chart
 ####################################
@@ -77,12 +69,11 @@ resource "helm_release" "jenkins" {
       image = {
         tag  = var.jenkins_image_tag
       }
-      # Dynamically load all JCasC files from the casc_configs directory.
-      # This is a powerful pattern that keeps your configuration separate from your deployment logic.
+      # Load the entire JCasC configuration from a single, consolidated file.
       jcasc = {
         enabled       = true
-        configScripts = { for filename in local.casc_config_files :
-          filename => file("${path.module}/../../jenkins-jcasc/casc_configs/${filename}")
+        configScripts = {
+          "jenkins-casc.yaml" = file("${path.module}/jenkins-casc.yaml")
         }
       }
     })

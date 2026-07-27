@@ -1,9 +1,87 @@
 jenkins:
-  systemMessage: "Jenkins configured automatically by Terraform and JCasC"
+  systemMessage: "Jenkins configured automatically by Helm + JCasC"
+
   numExecutors: 2
-  scmCheckoutRetryCount: 0
-  label: "master"
+
   mode: NORMAL
-  security:
-    globalJobDslSecurity:
-      useScriptSecurity: false
+
+  scmCheckoutRetryCount: 0
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  remotingSecurity:
+    enabled: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              id: "my-secret-text"
+              scope: GLOBAL
+              secret: "a-very-secret-value"
+              description: "Example Secret"
+
+security:
+  scriptApproval:
+    approvedSignatures:
+      - "method groovy.lang.Script evaluate java.io.File"
+      - "method hudson.model.Item delete"
+      - "method hudson.model.Item getFullName"
+      - "method hudson.model.Item getName"
+      - "method hudson.model.ItemGroup getItems"
+      - "method java.io.File eachFile groovy.lang.Closure"
+      - "method java.io.File eachFileRecurse groovy.lang.Closure"
+      - "method jenkins.model.Jenkins getItemByFullName java.lang.String"
+      - "new java.io.File java.lang.String"
+      - "staticMethod jenkins.model.Jenkins getInstance"
+
+unclassified:
+
+  mailer:
+    replyToAddress: "${ADMIN_EMAIL:-admin@example.com}"
+
+  scmGit:
+    globalConfigName: "${GIT_USERNAME:-Jenkins}"
+    globalConfigEmail: "${GIT_EMAIL:-jenkins@example.com}"
+
+jobs:
+  - script: >
+      folder('Automated Jobs') {
+        displayName('Automated Jobs')
+        description('Automatically managed Jenkins jobs')
+      }
+
+      pipelineJob('Automated Jobs/Jenkins Seed') {
+
+        description('Bootstrap Job DSL from Git')
+
+        logRotator {
+          daysToKeep(30)
+          numToKeep(20)
+        }
+
+        definition {
+          cpsScm {
+            lightweight(true)
+            scm {
+              git {
+                remote {
+                  url(System.getenv('SEED_REPO'))
+                }
+                branch(System.getenv('SEED_BRANCH'))
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }
