@@ -58,7 +58,10 @@ resource "helm_release" "jenkins" {
   namespace        = "jenkins"
   create_namespace = false
 
-  chart = "${path.module}/../../../k8s-helm-charts/tools/jenkins-jcasc"
+  # chart = "${path.module}/../../../k8s-helm-charts/tools/jenkins-jcasc"
+  repository = "https://github.com/sushant015/k8s-helm-charts.git"
+  chart      = "jenkins-jcasc"
+
   wait             = true
   timeout          = 600
   cleanup_on_fail  = true

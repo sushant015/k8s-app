@@ -17,6 +17,12 @@ It will provision a Minikube cluster and deploy the `jenkins-jcasc` Helm chart f
 
 Follow these steps to build your Jenkins image and deploy it with Terraform.
 
+local Minikube + Terraform + Helm + Jenkins JCasC setup, I'd recommend this approach:
+
+- Minikube → creates the Kubernetes cluster (using the minikube CLI)
+- Terraform → creates namespaces and installs Helm charts
+- Helm → deploys Jenkins
+
 ### 1. Prerequisites
 
 -   **Terraform**: Install Guide
@@ -26,15 +32,12 @@ Follow these steps to build your Jenkins image and deploy it with Terraform.
 -   **Helm**: Install Guide
 
 ```bash
-
 brew install tfenv
 tfenv use 1.7.1
 terraform --version
 
 brew install helm
 helm version
-
-
 ```
 
 ### 2. Build the Jenkins Docker Image
@@ -69,6 +72,7 @@ minikube start \
 
 # Then verify:
 kubectl config current-context
+kubectl cluster-info
 kubectl get nodes
 
 # From the repository root, navigate to this terraform directory
@@ -121,6 +125,11 @@ helm version
 # Check what Terraform thinks it installed
 terraform state list
 
+# removing the invalid provider
+rm -rf .terraform
+rm .terraform.lock.hcl
+terraform init
+
 # Then inspect the release:
 terraform state show helm_release.jenkins
 
@@ -143,21 +152,6 @@ helm list -A
 
 # If the release exists:
 helm status my-jenkins -n jenkins
-
-# View all Kubernetes resources created by the release
-kubectl get all -n jenkins
-
-kubectl get pvc -n jenkins
-kubectl get configmap -n jenkins
-kubectl get secret -n jenkins
-kubectl get ingress -n jenkins
-kubectl get events -n jenkins --sort-by=.lastTimestamp
-
-# Check the logs
-kubectl logs <pod-name> -n jenkins
-
-## If the container restarted:
-kubectl logs <pod-name> -n jenkins --previous
 
 ## See what Helm actually rendered
 helm get manifest my-jenkins -n jenkins
@@ -197,6 +191,27 @@ helm upgrade \
 
 # Rolls back to a previous revision.
 helm rollback my-jenkins 1
+
+```
+
+k8s debug commands
+
+```bash
+
+# View all Kubernetes resources created by the release
+kubectl get all -n jenkins
+
+kubectl get pvc -n jenkins
+kubectl get configmap -n jenkins
+kubectl get secret -n jenkins
+kubectl get ingress -n jenkins
+kubectl get events -n jenkins --sort-by=.lastTimestamp
+
+# Check the logs
+kubectl logs <pod-name> -n jenkins
+
+## If the container restarted:
+kubectl logs <pod-name> -n jenkins --previous
 
 ```
 
