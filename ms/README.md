@@ -135,6 +135,337 @@ docker compose up --build
 3. Open http://localhost:8080/poll/team-lunch and submit a vote.
 4. After end time (or click **Publish** on dashboard), view results on the same poll URL.
 
+## Local Development (Minikube)
+
+Run the full stack inside a local Kubernetes (Minikube) cluster simulating the GKE environment. A self-hosted PostgreSQL database runs inside a container within the cluster.
+
+### 🎯 Phase 1: Initial Setup (One-Time)
+
+1. **Install Prerequisites:**
+   - **Docker Desktop:** [Install Guide](https://docs.docker.com/get-docker/)
+   - **Minikube:** [Install Guide](https://minikube.sigs.k8s.io/docs/start/)
+   - **kubectl:** [Install Guide](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+
+2. **Start and Configure Minikube:**
+   Start Minikube with sufficient resources and enable necessary addons:
+   ```bash
+   # Start the Minikube cluster
+   minikube start --cpus=4 --memory=4096
+
+   # Enable storage provisioner for Persistent Volumes
+   minikube addons enable storage-provisioner
+
+   # (Optional) Enable Ingress and Metrics Server
+   minikube addons enable ingress
+   minikube addons enable metrics-server
+
+   # Minikube status
+   minikube status
+
+   # Delete minikube cluster
+   minikube delete
+
+   # Minikube dashboard
+   minikube dashboard
+
+   # Access Jenkins UI
+   kubectl port-forward -n jenkins service/my-jenkins-jenkins-jcasc 3000:8080
+   
+   ```
+
+### 🚀 Phase 2: Deploy the Application
+
+The recommended way to deploy is using the all-in-one script. It handles building, loading, and deploying everything for you.
+
+```bash
+# From the project root
+chmod +x ms/scripts/rebuild-all-minikube.sh
+./ms/scripts/rebuild-all-minikube.sh
+```
+
+> **💡 Note:** You can pass `false` as an argument if you only want to build and load the images to Minikube without deploying/updating the manifests (e.g., if you plan to deploy them via Helm/ArgoCD later):
+> ```bash
+> ./ms/scripts/rebuild-all-minikube.sh false
+> ```
+
+**What this script does:**
+1. Validates your environment.
+2. Cleans old Docker images.
+3. Builds fresh images for all services.
+4. Loads these images into your Minikube cluster.
+5. Deploys all Kubernetes manifests from `ms/k8s-minikube/`, triggering a rolling update of all services.
+
+#### Alternative: Manual Build and Deployment
+If you prefer to perform these steps manually:
+```bash
+# Build services
+cd ms/services/auth-service && docker build -t auth-service:latest .
+cd ../user-service && docker build -t user-service:latest .
+cd ../poll-service && docker build -t poll-service:latest .
+cd ../vote-service && docker build -t vote-service:latest .
+cd ../result-service && docker build -t result-service:latest .
+cd ../api-gateway && docker build -t api-gateway:latest .
+cd ../frontend && docker build -t frontend-service:latest .
+
+# Load images into Minikube
+minikube image load auth-service:latest
+minikube image load user-service:latest
+minikube image load poll-service:latest
+minikube image load vote-service:latest
+minikube image load result-service:latest
+minikube image load api-gateway:latest
+minikube image load frontend-service:latest
+
+# Deploy manifests (from ms directory)
+cd ../..
+kubectl apply -f ms/k8s-minikube/
+```
+
+#### Alternative: Deploy using Helm Chart manually
+You can deploy the complete stack using the `vote-poll-app` Helm umbrella chart (located in the sibling directory `k8s-helm-charts`):
+
+```bash
+# Build and load the images to Minikube (skip deployment)
+cd k8s-app && ./ms/scripts/rebuild-all-minikube.sh false
+
+# Set the image tag to deploy (e.g. "20260731-174338" or dynamically via the generated file)
+IMAGE_TAG=$(cat .image-tag)
+
+# Navigate to the Helm chart folder
+cd ../k8s-helm-charts/vote-poll-app
+
+# Update the chart dependencies (loads local microservice and postgres-db subcharts)
+helm dependency update
+
+# Deploy the stack to Minikube
+helm upgrade --install vote-poll . --namespace vote-poll --create-namespace \
+  --set frontend.image.tag=${IMAGE_TAG} \
+  --set api-gateway.image.tag=${IMAGE_TAG} \
+  --set auth-service.image.tag=${IMAGE_TAG} \
+  --set user-service.image.tag=${IMAGE_TAG} \
+  --set poll-service.image.tag=${IMAGE_TAG} \
+  --set vote-service.image.tag=${IMAGE_TAG} \
+  --set result-service.image.tag=${IMAGE_TAG}
+```
+
+##### Helm Deployment Architecture & Flow
+
+For a better understanding of how the Helm deployment is structured under the hood, here are the component architecture diagrams:
+
+**1. Chart Dependency Hierarchy**
+The umbrella chart `vote-poll-app` references the local template sub-charts to deploy all service instances and dependencies:
+
+```mermaid
+graph TD
+    %% Styling
+    classDef umbrella fill:#4f46e5,stroke:#312e81,stroke-width:2px,color:#ffffff;
+    classDef subchart fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+    classDef shared fill:#10b981,stroke:#047857,stroke-width:2px,color:#ffffff;
+
+    subgraph Umbrella
+        App[vote-poll-app Main Chart]:::umbrella
+    end
+
+    subgraph Subcharts
+        DB[postgres-db Sub-chart]:::subchart
+        MS[microservice Sub-chart Template]:::subchart
+    end
+
+    subgraph Aliases
+        FE[frontend]:::shared
+        GW[api-gateway]:::shared
+        AS[auth-service]:::shared
+        US[user-service]:::shared
+        PS[poll-service]:::shared
+        VS[vote-service]:::shared
+        RS[result-service]:::shared
+    end
+
+    App --> DB
+    App --> MS
+
+    MS --> FE
+    MS --> GW
+    MS --> AS
+    MS --> US
+    MS --> PS
+    MS --> VS
+    MS --> RS
+```
+
+**2. Component Deployment & Relationship Flow**
+Orchestration of configuration resources, databases, volume claims, microservice workloads, and internal network routing inside the namespace:
+
+```mermaid
+flowchart TB
+    %% Styling
+    classDef config fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#ffffff;
+    classDef database fill:#ec4899,stroke:#be185d,stroke-width:2px,color:#ffffff;
+    classDef svc fill:#3b82f6,stroke:#1d4ed8,stroke-width:2px,color:#ffffff;
+    classDef ingress fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#ffffff;
+
+    %% Configuration Layer
+    subgraph ConfigLayer
+        CM[ConfigMap vote-poll-config]:::config
+        Sec[Secret vote-poll-secrets]:::config
+    end
+
+    %% Database Layer
+    subgraph DBLayer
+        DB_CM[ConfigMap init.sql script]:::config
+        DB_PVC[PersistentVolumeClaim postgres-pvc]:::database
+        DB_Sec[Secret postgres-secret]:::database
+        
+        DB_Pod[PostgreSQL Pod postgres-db]:::database
+        DB_Svc[PostgreSQL Service postgres-db:5432]:::database
+        
+        DB_CM --> DB_Pod
+        DB_PVC --> DB_Pod
+        DB_Sec --> DB_Pod
+        DB_Pod <--> DB_Svc
+    end
+
+    %% Microservices Layer
+    subgraph SVCLayer
+        %% Pods
+        GW_Pod[API Gateway Pod]:::svc
+        FE_Pod[Frontend Pod]:::svc
+        AS_Pod[Auth Service Pod]:::svc
+        US_Pod[User Service Pod]:::svc
+        PS_Pod[Poll Service Pod]:::svc
+        VS_Pod[Vote Service Pod]:::svc
+        RS_Pod[Result Service Pod]:::svc
+
+        %% Services
+        GW_Svc[api-gateway Svc]:::svc
+        FE_Svc[frontend Svc NodePort]:::svc
+        AS_Svc[auth-service Svc]:::svc
+        US_Svc[user-service Svc]:::svc
+        PS_Svc[poll-service Svc]:::svc
+        VS_Svc[vote-service Svc]:::svc
+        RS_Svc[result-service Svc]:::svc
+    end
+
+    %% Configuration Injections
+    CM -.-> GW_Pod
+    CM -.-> FE_Pod
+    CM -.-> AS_Pod
+    CM -.-> US_Pod
+    CM -.-> PS_Pod
+    CM -.-> VS_Pod
+    CM -.-> RS_Pod
+    Sec -.-> GW_Pod
+    Sec -.-> FE_Pod
+    Sec -.-> AS_Pod
+    Sec -.-> US_Pod
+    Sec -.-> PS_Pod
+    Sec -.-> VS_Pod
+    Sec -.-> RS_Pod
+
+    %% Database Connections
+    AS_Pod ==> DB_Svc
+    US_Pod ==> DB_Svc
+    PS_Pod ==> DB_Svc
+    VS_Pod ==> DB_Svc
+    RS_Pod ==> DB_Svc
+
+    %% Internal Communication & Routing
+    Client((User Browser)) ==> FE_Svc
+    FE_Svc --> FE_Pod
+    FE_Pod ---> GW_Svc
+    GW_Svc --> GW_Pod
+    
+    GW_Pod --> AS_Svc
+    GW_Pod --> US_Svc
+    GW_Pod --> PS_Svc
+    GW_Pod --> VS_Svc
+    GW_Pod --> RS_Svc
+    AS_Svc --> AS_Pod
+    US_Svc --> US_Pod
+    PS_Svc --> PS_Pod
+    VS_Svc --> VS_Pod
+    RS_Svc --> RS_Pod
+```
+
+### 🔎 Phase 3: Access and Verify
+
+Once deployed, wait for the PostgreSQL database pod to be fully ready:
+```bash
+kubectl wait --for=condition=ready pod -l app=postgres-db -n vote-poll --timeout=300s
+```
+
+Use `port-forward` to access services from your local machine (run each command in a separate terminal):
+
+| Service | Port Forward Command | Local URL / Access |
+|---------|----------------------|--------------------|
+| **Frontend** | `kubectl port-forward -n vote-poll svc/frontend 3000:8080` | [http://localhost:3000](http://localhost:3000) |
+| **API Gateway** | `kubectl port-forward -n vote-poll svc/api-gateway 8080:8080` | [http://localhost:8080/api/health](http://localhost:8080/api/health) |
+| **PostgreSQL** | `kubectl port-forward -n vote-poll svc/postgres-db 5432:5432` | `localhost:5432` (User: `postgres` / Pass: `postgres_password`) |
+
+### 🗄️ Database Configurations
+
+| Database | Service | Purpose | JDBC Connection URL |
+|----------|---------|---------|---------------------|
+| `auth_db` | Auth Service | User authentication and JWT tokens | `jdbc:postgresql://postgres-db:5432/auth_db` |
+| `user_db` | User Service | User profiles and personal data | `jdbc:postgresql://postgres-db:5432/user_db` |
+| `poll_db` | Poll Service | Poll creation and management | `jdbc:postgresql://postgres-db:5432/poll_db` |
+| `vote_db` | Vote Service | Vote records and validation | `jdbc:postgresql://postgres-db:5432/vote_db` |
+| `result_db` | Result Service | Vote aggregation and results | `jdbc:postgresql://postgres-db:5432/result_db` |
+
+### 🔄 Daily Development Workflow
+
+1. **Make Code Changes:** Edit the source code of one or more microservices.
+2. **Re-run the Deploy Script:**
+   ```bash
+   ./ms/scripts/rebuild-all-minikube.sh
+   ```
+   > **⚡ Pro Tip (Faster Iteration):** If you are only working on a single service, rebuild and redeploy just that service:
+   > ```bash
+   > ./ms/scripts/rebuild-single-minikube.sh <service-name>
+   > # Example: ./ms/scripts/rebuild-single-minikube.sh poll-service
+   > ```
+
+### 🐛 Troubleshooting
+
+- **Checking logs for a service:**
+  ```bash
+  kubectl logs -n vote-poll -l app=poll-service -f
+  ```
+- **Checking all service logs:**
+  ```bash
+  kubectl logs -n vote-poll -f --all-containers=true
+  ```
+- **Checking pod statuses:**
+  ```bash
+  kubectl get pods -n vote-poll
+  kubectl describe pod <pod-name> -n vote-poll
+  ```
+- **Entering a container shell:**
+  ```bash
+  kubectl exec -it <pod-name> -n vote-poll -- /bin/sh
+  ```
+- **Database Connection issues:** Verify DNS resolution:
+  ```bash
+  kubectl exec -it <pod-name> -n vote-poll -- nslookup postgres-db
+  ```
+
+### 🧹 Cleanup
+
+- **Stop Application (keeps database data):**
+  ```bash
+  kubectl delete namespace vote-poll
+  ```
+- **Stop Minikube:**
+  ```bash
+  minikube stop
+  ```
+- **Full Reset (Deletes cluster & all data):**
+  ```bash
+  minikube delete
+  ```
+
+---
+
 ## Quick Start (GKE / Production)
 
 ```bash
@@ -171,15 +502,19 @@ kubectl get svc -n vote-poll frontend-service -o jsonpath='{.status.loadBalancer
 ```
 ms/
 ├── README.md
-├── docker-compose.yml      # Local dev stack
+├── CONFIG-COMPARISON.md    # Minikube vs Production Cloud comparison
+├── docker-compose.yml      # Local dev stack (Docker Compose)
 ├── .env.example
 ├── database/init.sql
-├── infra/gcloud-setup.sh
+├── infra/gcloud-setup.sh   # GCP setup script
 ├── scripts/
 │   ├── build-and-push.sh
 │   ├── deploy.sh
-│   └── local-dev.sh
-├── k8s/                    # Kubernetes manifests
+│   ├── local-dev.sh
+│   ├── rebuild-all-minikube.sh     # Script to build and deploy all services to Minikube
+│   └── rebuild-single-minikube.sh  # Script to rebuild a single service for Minikube
+├── k8s/                    # Production Kubernetes manifests (GKE)
+├── k8s-minikube/           # Local Kubernetes manifests (Minikube)
 └── services/               # Microservice source code
 ```
 ## Troubleshooting 

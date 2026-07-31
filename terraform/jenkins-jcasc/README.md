@@ -157,7 +157,7 @@ helm status my-jenkins -n jenkins
 helm get manifest my-jenkins -n jenkins
 
 ## Check Helm values
-helm get values my-jenkins -n jenkins # user-applied at runtime only
+helm get values my-jenkins -n jenkins # user-applied at runtime only apart defalt values from values.yaml
 helm get values my-jenkins -n jenkins --all # show combined values 
 
 # Review the generated YAML before deployment.

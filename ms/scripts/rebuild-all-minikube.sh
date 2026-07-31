@@ -35,6 +35,24 @@ DOCKER_REGISTRY="" # Empty for local development
 TIMESTAMP_TAG=$(date +%Y%m%d-%H%M%S)
 MINIKUBE_PROFILE="minikube"
 
+# Input argument for deployment control (default to true)
+RUN_DEPLOYMENT=true
+
+# Parse command line arguments
+if [ -n "$1" ]; then
+    if [ "$1" = "false" ] || [ "$1" = "n" ] || [ "$1" = "no" ] || [ "$1" = "--skip-deploy" ]; then
+        RUN_DEPLOYMENT=false
+    elif [ "$1" = "true" ] || [ "$1" = "y" ] || [ "$1" = "yes" ] || [ "$1" = "--deploy" ]; then
+        RUN_DEPLOYMENT=true
+    else
+        echo -e "${RED}Error: Invalid argument '$1'${NC}"
+        echo "Usage: $0 [true|false]"
+        echo "  true  - Run full rebuild, update manifests, and deploy (default)"
+        echo "  false - Build and load images to Minikube only, skipping deploy steps (Phase 5.5 & 6)"
+        exit 1
+    fi
+fi
+
 # List of microservices to build
 SERVICES=(
     "frontend"
@@ -244,6 +262,12 @@ done
 echo ""
 print_success "All images verified in Minikube"
 
+# Save the image tag name to a file so that other tools (like Helm) can use it
+echo "${TIMESTAMP_TAG}" > .image-tag
+print_info "Saved generated image tag '${TIMESTAMP_TAG}' to .image-tag"
+
+if [ "$RUN_DEPLOYMENT" = "true" ]; then
+
 # ============================================================================
 # PHASE 5.5: UPDATE KUBERNETES MANIFESTS WITH NEW IMAGE TAG
 # ============================================================================
@@ -331,3 +355,10 @@ print_info "Next steps:"
 echo "  - To access services, run: 'kubectl port-forward -n $NAMESPACE svc/frontend 3000:8080'"
 echo "  - To view all running pods, run: 'kubectl get pods -n $NAMESPACE'"
 echo "  - To follow logs for a service, run: 'kubectl logs -n $NAMESPACE -l app=poll-service -f'"
+
+else
+    echo ""
+    print_header "✅ Build Complete!"
+    print_success "Images built and loaded into Minikube successfully."
+    print_info "Skipping Phase 5.5 (Update Manifests) and Phase 6 (Deploy to Kubernetes) as requested."
+fi
