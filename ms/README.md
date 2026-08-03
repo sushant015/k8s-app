@@ -595,6 +595,86 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 ```
 Open http://localhost:9090 in your browser to view scraped targets, execute PromQL queries, and inspect metrics.
 
+### 📊 Deploy and Access the Grafana Dashboard
+
+Grafana is deployed to the `monitoring` namespace and pre-configured with a Prometheus datasource and cluster dashboards:
+
+#### 1. Deploy Grafana
+Run from the repository root:
+```bash
+# Build/Download chart dependencies
+helm dependency update k8s-helm-charts/grafana-monitoring
+
+# Deploy to Minikube
+helm upgrade --install grafana k8s-helm-charts/grafana-monitoring \
+  --namespace monitoring \
+  --create-namespace
+```
+
+#### 2. Access the Grafana UI
+> [!NOTE]
+> On macOS (when using the default Docker driver), the Minikube IP (`192.168.49.2`) is **not directly routable** from the host. You cannot connect to `http://192.168.49.2:32000` directly.
+> 
+> Choose **one** of the following methods to access Grafana from your Mac:
+
+*   **Option A: Create a Minikube Tunnel (Recommended)**
+    Run the following command to tunnel the NodePort service and automatically open it in your browser:
+    ```bash
+    minikube service grafana -n monitoring
+    ```
+*   **Option B: Use Kubectl Port-Forwarding**
+    Run the following command to forward Grafana's port `80` to your localhost port `3000`:
+    ```bash
+    kubectl port-forward -n monitoring svc/grafana 3000:80
+    ```
+    Then, open http://localhost:3000 in your browser.
+
+*(Credentials: User `admin` / Password `admin`)*
+
+
+
+3. **Pre-configured Dashboards**:
+   The deployment automatically imports three production-grade monitoring dashboards from Grafana.com:
+   * **Kubernetes Cluster** (ID: `315`) - Overall cluster health, memory, and CPU limits.
+   * **Node Exporter Full** (ID: `1860`) - VM/Host level system resource stats.
+   * **K8s Resources / Pods** (ID: `14205`) - CPU and Memory resource graphs per pod/namespace.
+
+   Additionally, because standard dashboards fail on local Minikube clusters due to cAdvisor container label omission (`container=""`), a **Custom Minikube Dashboard** is automatically provisioned:
+   * **Minikube Vote-Poll Service Monitor** - Tracks CPU usage, memory usage, and pod counts grouped dynamically per microservice in the `vote-poll` namespace (uses regex `label_replace` PromQL functions to resolve service names).
+
+
+---
+
+### ⚡ Load Testing & Horizontal Pod Autoscaling (HPA)
+
+To ensure the frontend is highly available and dynamically scales up under heavy traffic, HPA has been configured for the frontend deployment.
+
+#### 1. HPA Configuration
+The frontend HPA is configured as follows:
+* **Min Replicas**: 3 pods
+* **Max Replicas**: 8 pods
+* **Target CPU threshold**: 50% of the request limit (`10m`)
+
+#### 2. Run Local Load Test
+We use an in-cluster load generator pod (`hey`) to simulate traffic against the frontend. The script is optimized to prevent crashing low-resource environments (e.g. 4 CPUs, 4GB RAM) by default.
+
+Run from your repository root:
+```bash
+# Default load (concurrency=25, duration=1m, max QPS/worker=10)
+./ms/scripts/load-test-frontend.sh
+
+# Custom load (e.g. concurrency=40, duration=2m, max QPS/worker=15)
+./ms/scripts/load-test-frontend.sh 40 2m 15
+```
+
+#### 3. Monitor Scaling
+Open a terminal and watch the HPA resource scaling in real-time:
+```bash
+kubectl get hpa -n vote-poll -w
+```
+Under load, you will observe the average CPU utilization rise and the replica count scale up (e.g., from 3 to 7 replicas).
+
+
 ---
 
 
