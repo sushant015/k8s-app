@@ -464,7 +464,139 @@ Use `port-forward` to access services from your local machine (run each command 
   minikube delete
   ```
 
+## 📊 Monitoring Stack (Prometheus Operator)
+
+A complete monitoring stack is defined under `k8s-helm-charts/prometheus-monitoring`. It deploys:
+- **Prometheus Operator**: Manages Prometheus server and custom monitoring resources.
+- **Prometheus Server**: Running with persistent volume storage (PVC).
+- **Kube State Metrics**: Monitors Kubernetes resource states (Deployments, Pods, etc.).
+- **Node Exporter**: Collects host level metrics (CPU, Memory, Disk, Network).
+- **cAdvisor Exporter**: Scrapes container level resource usage (CPU/memory per container).
+- **ServiceMonitor & PodMonitor**: Configured to scrape workloads across all namespaces.
+
+For separation of concerns, the monitoring stack is deployed in its own namespace `monitoring`.
+
+### 🚀 Deploying the Monitoring Stack
+
+#### 1. Build Chart Dependencies
+From your workspace directory, run:
+```bash
+helm dependency build k8s-helm-charts/prometheus-monitoring
+```
+
+#### 2. Deploy to Minikube
+Deploy using the default values, which utilize the `standard` StorageClass for PVC:
+```bash
+helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
+  --namespace monitoring \
+  --create-namespace
+```
+
+#### 3. Deploy to GKE
+For GKE, configure the appropriate StorageClass (such as `standard-rwo` or `premium-rwo`) and request a custom storage size:
+```bash
+helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
+  --namespace monitoring \
+  --create-namespace \
+  --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=standard-rwo \
+  --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=20Gi
+```
+
+### 🔌 Enable Monitoring on vote-poll Microservices
+
+#### 🛠️ Helm-Level Monitoring Integration (New Changes)
+We have integrated Prometheus `ServiceMonitor` resources directly into the generic `microservice` Helm template. This removes the need to manually add `prometheus.io/scrape` labels or annotate Kubernetes Services.
+
+1. **How it is configured**:
+   * A `servicemonitor.yaml` template is defined in `k8s-helm-charts/microservice/templates/`.
+   * Toggles are exposed inside the parent `vote-poll-app` configuration.
+2. **How to enable it**:
+   Simply toggle the `serviceMonitor.enabled` field under the respective microservice block in your `vote-poll-app/values.yaml`:
+   ```yaml
+   auth-service:
+     serviceMonitor:
+       enabled: true
+       path: /actuator/prometheus
+   ```
+
 ---
+
+#### 📦 Prometheus Operator CRDs Reference
+
+The Prometheus Operator uses **Custom Resource Definitions (CRDs)** to manage the monitoring stack yml/manifests declaratively:
+
+| CRD | Description | Purpose |
+| :--- | :--- | :--- |
+| **`prometheuses`** | Prometheus Server Deployment | Provisions and manages local Prometheus server pods and storage. |
+| **`prometheusagents`** | Lightweight Agent | Runs Prometheus in agent mode to scrape and forward metrics via `remote_write` (no local rules). |
+| **`servicemonitors`** | Service Scrape Rules | Defines label selectors to discover and scrape Kubernetes **Services** (e.g., target microservices). |
+| **`podmonitors`** | Pod Scrape Rules | Defines label selectors to discover and scrape Kubernetes **Pods** directly (bypassing Services). |
+| **`prometheusrules`** | Alerting/Recording Rules | Defines rule conditions (e.g. CPU > 90%) and recording queries. |
+| **`scrapeconfigs`** | Custom Scraper | Escape hatch for raw Prometheus scrape jobs (e.g., external non-k8s targets). |
+| **`probes`** | Blackbox Probing | Checks external or internal HTTP/TCP uptime via Prometheus Blackbox Exporter. |
+| **`alertmanagers`** | Alertmanager Deployment | Manages deployment of Alertmanager instances. |
+| **`alertmanagerconfigs`** | Alert Routing | Configures routes, receivers, and inhibition rules (e.g., Slack alerts) at namespace level. |
+| **`thanosrulers`** | Thanos Rules Engine | Evaluates alert rules globally against historical multi-cluster metrics. |
+
+---
+
+#### 🔍 Key Metrics to Verify Scrapes & App Health (PromQL)
+
+Use the following queries inside the Prometheus UI (`http://localhost:9090`) to verify your workloads:
+
+##### Target & Scrape Health
+*   **Check Scraping Status (Per Pod)**:
+    ```promql
+    up{namespace="vote-poll"}
+    ```
+    *Returns `1` if the metrics endpoint is successfully scraped, `0` if unreachable.*
+*   **Total Targets Scraped**:
+    ```promql
+    sum(up)
+    ```
+
+##### Pod & Container Metrics (cAdvisor)
+> [!NOTE]
+> On Minikube (using Docker/containerd drivers), container-level cgroup metrics are aggregated under the **Pod level** (meaning the `container` label is reported as `container=""`). Avoid using `container!=""` filters.
+*   **Active Memory Usage (per Pod)**:
+    ```promql
+    sum(container_memory_working_set_bytes{namespace="vote-poll"}) by (pod)
+    ```
+*   **CPU Core Usage Rate (per Pod)**:
+    ```promql
+    sum(rate(container_cpu_usage_seconds_total{namespace="vote-poll"}[5m])) by (pod)
+    ```
+*   **Network Inbound Traffic (per Pod)**:
+    ```promql
+    sum(rate(container_network_receive_bytes_total{namespace="vote-poll"}[5m])) by (pod)
+    ```
+
+##### Kubernetes API State (Kube-State-Metrics)
+*   **Pod Container Restarts**:
+    ```promql
+    sum(kube_pod_container_status_restarts_total{namespace="vote-poll"}) by (pod)
+    ```
+*   **Pod Status Phase breakdown**:
+    ```promql
+    sum(kube_pod_status_phase{namespace="vote-poll"}) by (phase)
+    ```
+
+
+### 🔍 Access the Prometheus Dashboard
+
+Wait for the Prometheus pod to be ready:
+```bash
+kubectl get pods -n monitoring
+```
+
+Set up a port-forwarding connection to access the Prometheus UI:
+```bash
+kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
+```
+Open http://localhost:9090 in your browser to view scraped targets, execute PromQL queries, and inspect metrics.
+
+---
+
 
 ## Quick Start (GKE / Production)
 
