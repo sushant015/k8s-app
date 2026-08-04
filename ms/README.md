@@ -464,19 +464,16 @@ Use `port-forward` to access services from your local machine (run each command 
   minikube delete
   ```
 
-## 📊 Monitoring Stack (Prometheus Operator)
+## 📊 Observability Stack (Prometheus, Grafana & Loki)
 
-A complete monitoring stack is defined under `k8s-helm-charts/prometheus-monitoring`. It deploys:
-- **Prometheus Operator**: Manages Prometheus server and custom monitoring resources.
-- **Prometheus Server**: Running with persistent volume storage (PVC).
-- **Kube State Metrics**: Monitors Kubernetes resource states (Deployments, Pods, etc.).
-- **Node Exporter**: Collects host level metrics (CPU, Memory, Disk, Network).
-- **cAdvisor Exporter**: Scrapes container level resource usage (CPU/memory per container).
-- **ServiceMonitor & PodMonitor**: Configured to scrape workloads across all namespaces.
+A complete monitoring and logging stack is defined under `k8s-helm-charts/`. It deploys:
+- **Prometheus Operator & Server**: Deploys Prometheus Server, Kube State Metrics, Node Exporter, and cAdvisor metrics scraping.
+- **Grafana**: Pre-configured with automatic Prometheus & Loki datasources and standard cluster dashboards.
+- **Loki & Promtail**: Deploys Loki log database and Promtail daemonsets for log collection.
 
-For separation of concerns, the monitoring stack is deployed in its own namespace `monitoring`.
+For separation of concerns, the entire observability stack is deployed in the `monitoring` namespace.
 
-### 🚀 Deploying the Monitoring Stack
+### 🚀 Deploying the Prometheus Stack
 
 #### 1. Build Chart Dependencies
 From your workspace directory, run:
@@ -500,6 +497,21 @@ helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
   --create-namespace \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=standard-rwo \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=20Gi
+```
+
+### 📝 Deploying the Loki Stack (Log Aggregation)
+
+#### 1. Build Chart Dependencies
+From your workspace directory, run:
+```bash
+helm dependency build k8s-helm-charts/loki-monitoring
+```
+
+#### 2. Deploy to Minikube / GKE
+```bash
+helm upgrade --install loki k8s-helm-charts/loki-monitoring \
+  --namespace monitoring \
+  --create-namespace
 ```
 
 ### 🔌 Enable Monitoring on vote-poll Microservices
