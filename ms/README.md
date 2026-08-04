@@ -222,7 +222,7 @@ kubectl apply -f ms/k8s-minikube/
 ```
 
 #### Alternative: Deploy using Helm Chart manually
-You can deploy the complete stack using the `vote-poll-app` Helm umbrella chart (located in the sibling directory `k8s-helm-charts`):
+You can deploy the complete stack using the `vote-poll-app` Helm umbrella chart (located in the sibling directory `k8s-helm-charts/apps`):
 
 ```bash
 # Build and load the images to Minikube (skip deployment)
@@ -232,7 +232,7 @@ cd k8s-app && ./ms/scripts/rebuild-all-minikube.sh false
 IMAGE_TAG=$(cat .image-tag)
 
 # Navigate to the Helm chart folder
-cd ../k8s-helm-charts/vote-poll-app
+cd ../k8s-helm-charts/apps/vote-poll-app
 
 # Update the chart dependencies (loads local microservice and postgres-db subcharts)
 helm dependency update
@@ -466,7 +466,7 @@ Use `port-forward` to access services from your local machine (run each command 
 
 ## 📊 Observability Stack (Prometheus, Grafana & Loki)
 
-A complete monitoring and logging stack is defined under `k8s-helm-charts/`. It deploys:
+A complete monitoring and logging stack is defined under `k8s-helm-charts/monitoring/`. It deploys:
 - **Prometheus Operator & Server**: Deploys Prometheus Server, Kube State Metrics, Node Exporter, and cAdvisor metrics scraping.
 - **Grafana**: Pre-configured with automatic Prometheus & Loki datasources and standard cluster dashboards.
 - **Loki & Promtail**: Deploys Loki log database and Promtail daemonsets for log collection.
@@ -478,13 +478,13 @@ For separation of concerns, the entire observability stack is deployed in the `m
 #### 1. Build Chart Dependencies
 From your workspace directory, run:
 ```bash
-helm dependency build k8s-helm-charts/prometheus-monitoring
+helm dependency build k8s-helm-charts/monitoring/prometheus-monitoring
 ```
 
 #### 2. Deploy to Minikube
 Deploy using the default values, which utilize the `standard` StorageClass for PVC:
 ```bash
-helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
+helm upgrade --install prometheus k8s-helm-charts/monitoring/prometheus-monitoring \
   --namespace monitoring \
   --create-namespace
 ```
@@ -492,7 +492,7 @@ helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
 #### 3. Deploy to GKE
 For GKE, configure the appropriate StorageClass (such as `standard-rwo` or `premium-rwo`) and request a custom storage size:
 ```bash
-helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
+helm upgrade --install prometheus k8s-helm-charts/monitoring/prometheus-monitoring \
   --namespace monitoring \
   --create-namespace \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=standard-rwo \
@@ -504,12 +504,12 @@ helm upgrade --install prometheus k8s-helm-charts/prometheus-monitoring \
 #### 1. Build Chart Dependencies
 From your workspace directory, run:
 ```bash
-helm dependency build k8s-helm-charts/loki-monitoring
+helm dependency build k8s-helm-charts/monitoring/loki-monitoring
 ```
 
 #### 2. Deploy to Minikube / GKE
 ```bash
-helm upgrade --install loki k8s-helm-charts/loki-monitoring \
+helm upgrade --install loki k8s-helm-charts/monitoring/loki-monitoring \
   --namespace monitoring \
   --create-namespace
 ```
@@ -520,7 +520,7 @@ helm upgrade --install loki k8s-helm-charts/loki-monitoring \
 We have integrated Prometheus `ServiceMonitor` resources directly into the generic `microservice` Helm template. This removes the need to manually add `prometheus.io/scrape` labels or annotate Kubernetes Services.
 
 1. **How it is configured**:
-   * A `servicemonitor.yaml` template is defined in `k8s-helm-charts/microservice/templates/`.
+   * A `servicemonitor.yaml` template is defined in `k8s-helm-charts/apps/microservice/templates/`.
    * Toggles are exposed inside the parent `vote-poll-app` configuration.
 2. **How to enable it**:
    Simply toggle the `serviceMonitor.enabled` field under the respective microservice block in your `vote-poll-app/values.yaml`:
@@ -615,10 +615,10 @@ Grafana is deployed to the `monitoring` namespace and pre-configured with a Prom
 Run from the repository root:
 ```bash
 # Build/Download chart dependencies
-helm dependency update k8s-helm-charts/grafana-monitoring
+helm dependency update k8s-helm-charts/monitoring/grafana-monitoring
 
 # Deploy to Minikube
-helm upgrade --install grafana k8s-helm-charts/grafana-monitoring \
+helm upgrade --install grafana k8s-helm-charts/monitoring/grafana-monitoring \
   --namespace monitoring \
   --create-namespace
 ```
